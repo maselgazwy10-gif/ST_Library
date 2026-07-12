@@ -1,0 +1,29 @@
+#include <stdio.h>
+
+int Strlen (char *x)
+{
+
+  int sum = 0;
+  for (int i = 0;; i = i + 1)
+    {
+      if (x[i] == '\0')
+	{
+	  return sum;
+	}
+      sum += 1;
+    }
+}
+
+void Strcpy (char *x, char *y)
+{
+  for (int i = 0; i < Strlen (y); i++)
+    {
+
+
+
+      x[i] = y[i];
+
+
+    }
+  return;
+}
