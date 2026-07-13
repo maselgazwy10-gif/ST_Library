@@ -1,4 +1,5 @@
 #include<stdio.h>
+#include<stdlib.h>
 #include "str.h"
 
 int main (int argc , char* argv[])
@@ -8,7 +9,7 @@ int main (int argc , char* argv[])
 
   printf ("Y len : %d\n", Strlen (argv[1]));
 
-  Strcpy (x, argv[1]);
+  Strncpy (x, argv[1], atoi(argv[2]));
 
   printf ("X len : %d\n", Strlen (x));
   printf ("X : %s\n", x);
