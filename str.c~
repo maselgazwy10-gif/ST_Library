@@ -1,7 +1,6 @@
 #include <stdio.h>
 
-int
-Strlen (char *x)
+int Strlen (char *x)
 {
 
   int sum = 0;
@@ -15,13 +14,12 @@ Strlen (char *x)
     }
 }
 
-void
-Strcpy (char *x, char *y)
+void Strcpy (char *x, char *y)
 {
-  int i;
-  for (i = 0;y[i] != '\0'; i++)
-    {
-      x[i] = y[i];
+	int i;
+  for (i = 0; i < Strlen (y); i++)
+   {
+      	x[i] = y[i];
     }
   x[i] = '\0';
   return;
