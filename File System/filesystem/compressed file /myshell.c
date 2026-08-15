@@ -26,11 +26,11 @@ void get_absolute_path(const char *input, char *output, size_t max_len, const ch
 int main(int argc, char **argv) {
     char cwd[MAX_PATH_LEN] = "/";
 
-    printf("Welcome to My Ahla Shell! Type 'help' for available commands.\n");
+    printf("Welcome to Aura Team FileSystem Shell! Type 'help' for available commands.\n");
 
     while (1) {
         char buff[20000];
-        printf("my ahla shell:%s$ ", cwd);
+        printf("AuraTeam:%s$ ", cwd);
         fflush(stdout);
 
         if (fgets(buff, sizeof(buff), stdin) == NULL) {
