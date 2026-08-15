@@ -1,35 +1,32 @@
-// UserFS Undertale Presentation Engine
+// UserFS Undertale Presentation Engine (Enhanced VFX & Interactive Audio)
 
 class PresentationEngine {
   constructor() {
     this.currentIndex = 0;
     this.slides = [];
     this.maxSlides = window.PRESENTATION_MAX_SLIDES || 86;
-    this.typewriterTimer = null;
     this.soundEnabled = true;
     this.crtEnabled = true;
+    this.cursorEnabled = true;
 
     this.init();
   }
 
   init() {
-    // Check URL parameters for custom range, e.g. ?max=62 or ?slide=10
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('max')) {
       this.maxSlides = parseInt(urlParams.get('max'), 10) || this.maxSlides;
     }
 
-    // Filter slide data up to maxSlides
     this.slidesData = SLIDES_DATA.slice(0, this.maxSlides);
     this.totalSlides = this.slidesData.length;
 
-    // Render DOM
     this.renderSlides();
     this.renderOverviewModal();
     this.setupEventListeners();
     this.setupBackgroundCanvas();
+    this.setupPixelCursor();
 
-    // Check start slide from URL hash or param
     let startSlide = 0;
     if (window.location.hash) {
       const hashNum = parseInt(window.location.hash.replace('#slide-', ''), 10);
@@ -43,6 +40,41 @@ class PresentationEngine {
 
   setupBackgroundCanvas() {
     this.bgCanvas = new PixelBackgroundCanvas('pixel-bg-canvas');
+  }
+
+  setupPixelCursor() {
+    let cursor = document.getElementById('pixel-soul-cursor');
+    if (!cursor) {
+      cursor = document.createElement('div');
+      cursor.id = 'pixel-soul-cursor';
+      document.body.appendChild(cursor);
+    }
+
+    let lastTrailTime = 0;
+    window.addEventListener('mousemove', (e) => {
+      cursor.style.left = `${e.clientX}px`;
+      cursor.style.top = `${e.clientY}px`;
+
+      const now = Date.now();
+      if (now - lastTrailTime > 45) {
+        lastTrailTime = now;
+        const trail = document.createElement('div');
+        trail.className = 'cursor-trail';
+        trail.style.left = `${e.clientX}px`;
+        trail.style.top = `${e.clientY}px`;
+        document.body.appendChild(trail);
+        setTimeout(() => trail.remove(), 350);
+      }
+    });
+
+    window.addEventListener('mousedown', () => {
+      cursor.style.transform = 'translate(-50%, -50%) scale(1.35)';
+      if (window.undertaleAudio) window.undertaleAudio.playClickPop();
+    });
+
+    window.addEventListener('mouseup', () => {
+      cursor.style.transform = 'translate(-50%, -50%) scale(1)';
+    });
   }
 
   renderSlides() {
@@ -105,28 +137,42 @@ class PresentationEngine {
     });
   }
 
+  triggerScreenShake() {
+    document.body.classList.remove('screen-shake');
+    void document.body.offsetWidth; // Reflow trigger
+    document.body.classList.add('screen-shake');
+    setTimeout(() => document.body.classList.remove('screen-shake'), 320);
+  }
+
   goToSlide(index, playSound = true) {
     if (index < 0 || index >= this.totalSlides) return;
 
-    // Trigger encounter flash if moving to final encounter slide
-    if (this.slidesData[index].zone === 'encounter' && this.slidesData[this.currentIndex]?.zone !== 'encounter') {
-      const flash = document.querySelector('.encounter-flash');
-      if (flash) {
-        flash.classList.add('active');
-        setTimeout(() => flash.classList.remove('active'), 200);
+    const oldZone = this.slidesData[this.currentIndex]?.zone;
+    const newZone = this.slidesData[index].zone;
+
+    // Trigger encounter flash & screen shake if zone changes or boss encounter
+    if (newZone !== oldZone && oldZone !== undefined) {
+      this.triggerScreenShake();
+      if (newZone === 'encounter') {
+        const flash = document.querySelector('.encounter-flash');
+        if (flash) {
+          flash.classList.add('active');
+          setTimeout(() => flash.classList.remove('active'), 200);
+        }
+        if (window.undertaleAudio && playSound) {
+          window.undertaleAudio.playBattleEncounter();
+        }
       }
-      if (window.undertaleAudio && playSound) {
-        window.undertaleAudio.playBattleEncounter();
-      }
-    } else if (playSound && window.undertaleAudio) {
+    }
+
+    if (playSound && window.undertaleAudio) {
       if (index === this.totalSlides - 1) {
         window.undertaleAudio.playSavePoint();
-      } else {
+      } else if (newZone !== 'encounter') {
         window.undertaleAudio.playSlideChange();
       }
     }
 
-    // Hide old active
     if (this.slides[this.currentIndex]) {
       this.slides[this.currentIndex].classList.remove('active');
     }
@@ -135,7 +181,6 @@ class PresentationEngine {
     const currentSlide = this.slides[this.currentIndex];
     currentSlide.classList.add('active');
 
-    // Update body theme class
     const currentData = this.slidesData[this.currentIndex];
     document.body.className = `theme-${currentData.zone} ${this.crtEnabled ? '' : 'no-crt'}`;
 
@@ -143,13 +188,9 @@ class PresentationEngine {
       this.bgCanvas.setZone(currentData.zone);
     }
 
-    // Update Bottom HUD
     this.updateHUD();
-
-    // Update URL hash
     window.location.hash = `slide-${currentData.id}`;
 
-    // Update overview modal highlight
     document.querySelectorAll('.overview-card').forEach((c, i) => {
       c.classList.toggle('current', i === index);
     });
@@ -171,7 +212,12 @@ class PresentationEngine {
     const currentData = this.slidesData[this.currentIndex];
     
     const lvEl = document.getElementById('hud-lv-val');
-    if (lvEl) lvEl.textContent = `LV ${currentData.id}`;
+    if (lvEl) {
+      lvEl.textContent = `LV ${currentData.id}`;
+      lvEl.classList.remove('level-up');
+      void lvEl.offsetWidth;
+      lvEl.classList.add('level-up');
+    }
 
     const hpTextEl = document.getElementById('hud-hp-text');
     if (hpTextEl) hpTextEl.textContent = `${currentData.id}/${this.totalSlides}`;
@@ -221,9 +267,7 @@ class PresentationEngine {
   }
 
   setupEventListeners() {
-    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
-      // Audio context unlock
       if (window.undertaleAudio) window.undertaleAudio.init();
 
       switch (e.key) {
@@ -275,7 +319,6 @@ class PresentationEngine {
       }
     });
 
-    // Touch Swipe support
     let touchStartX = 0;
     window.addEventListener('touchstart', (e) => {
       touchStartX = e.changedTouches[0].screenX;
@@ -291,7 +334,6 @@ class PresentationEngine {
       }
     }, { passive: true });
 
-    // Buttons
     document.getElementById('btn-next')?.addEventListener('click', () => this.nextSlide());
     document.getElementById('btn-prev')?.addEventListener('click', () => this.prevSlide());
     document.getElementById('btn-map')?.addEventListener('click', () => this.toggleOverview());
