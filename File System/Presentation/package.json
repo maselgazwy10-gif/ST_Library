@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "puppeteer": "^24.43.1"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}

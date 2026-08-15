@@ -1,0 +1,306 @@
+// UserFS Undertale Presentation Engine
+
+class PresentationEngine {
+  constructor() {
+    this.currentIndex = 0;
+    this.slides = [];
+    this.maxSlides = window.PRESENTATION_MAX_SLIDES || 86;
+    this.typewriterTimer = null;
+    this.soundEnabled = true;
+    this.crtEnabled = true;
+
+    this.init();
+  }
+
+  init() {
+    // Check URL parameters for custom range, e.g. ?max=62 or ?slide=10
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('max')) {
+      this.maxSlides = parseInt(urlParams.get('max'), 10) || this.maxSlides;
+    }
+
+    // Filter slide data up to maxSlides
+    this.slidesData = SLIDES_DATA.slice(0, this.maxSlides);
+    this.totalSlides = this.slidesData.length;
+
+    // Render DOM
+    this.renderSlides();
+    this.renderOverviewModal();
+    this.setupEventListeners();
+    this.setupBackgroundCanvas();
+
+    // Check start slide from URL hash or param
+    let startSlide = 0;
+    if (window.location.hash) {
+      const hashNum = parseInt(window.location.hash.replace('#slide-', ''), 10);
+      if (!isNaN(hashNum) && hashNum >= 1 && hashNum <= this.totalSlides) {
+        startSlide = hashNum - 1;
+      }
+    }
+
+    this.goToSlide(startSlide, false);
+  }
+
+  setupBackgroundCanvas() {
+    this.bgCanvas = new PixelBackgroundCanvas('pixel-bg-canvas');
+  }
+
+  renderSlides() {
+    const stage = document.getElementById('slide-stage');
+    if (!stage) return;
+
+    stage.innerHTML = '';
+
+    this.slidesData.forEach((slide, index) => {
+      const slideEl = document.createElement('div');
+      slideEl.className = 'slide';
+      slideEl.id = `slide-${slide.id}`;
+      slideEl.dataset.index = index;
+      slideEl.dataset.zone = slide.zone;
+      if (slide.type) slideEl.dataset.type = slide.type;
+
+      slideEl.innerHTML = `
+        <div class="slide-header">
+          <div class="slide-meta-row">
+            <span class="slide-zone-badge">${slide.zoneName || 'Zone'}</span>
+            <span class="slide-chapter">${slide.chapter || ''}</span>
+          </div>
+          <div class="slide-title-wrapper">
+            <h1 class="slide-title">
+              <span class="pixel-heart"></span> Slide ${slide.id} — ${slide.title}
+            </h1>
+            ${slide.subtitle ? `<div class="slide-subtitle">${slide.subtitle}</div>` : ''}
+          </div>
+        </div>
+
+        <div class="slide-body">
+          ${slide.quote ? `<div class="quote-box mb-3">"${slide.quote}"</div>` : ''}
+          ${slide.content}
+        </div>
+      `;
+
+      stage.appendChild(slideEl);
+      this.slides.push(slideEl);
+    });
+  }
+
+  renderOverviewModal() {
+    const grid = document.getElementById('overview-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+    this.slidesData.forEach((slide, idx) => {
+      const card = document.createElement('div');
+      card.className = 'overview-card';
+      card.dataset.index = idx;
+      card.innerHTML = `
+        <div class="overview-card-num">SLIDE ${slide.id} [${slide.zone.toUpperCase()}]</div>
+        <div class="overview-card-title">${slide.title}</div>
+      `;
+      card.addEventListener('click', () => {
+        this.goToSlide(idx);
+        this.toggleOverview(false);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  goToSlide(index, playSound = true) {
+    if (index < 0 || index >= this.totalSlides) return;
+
+    // Trigger encounter flash if moving to final encounter slide
+    if (this.slidesData[index].zone === 'encounter' && this.slidesData[this.currentIndex]?.zone !== 'encounter') {
+      const flash = document.querySelector('.encounter-flash');
+      if (flash) {
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 200);
+      }
+      if (window.undertaleAudio && playSound) {
+        window.undertaleAudio.playBattleEncounter();
+      }
+    } else if (playSound && window.undertaleAudio) {
+      if (index === this.totalSlides - 1) {
+        window.undertaleAudio.playSavePoint();
+      } else {
+        window.undertaleAudio.playSlideChange();
+      }
+    }
+
+    // Hide old active
+    if (this.slides[this.currentIndex]) {
+      this.slides[this.currentIndex].classList.remove('active');
+    }
+
+    this.currentIndex = index;
+    const currentSlide = this.slides[this.currentIndex];
+    currentSlide.classList.add('active');
+
+    // Update body theme class
+    const currentData = this.slidesData[this.currentIndex];
+    document.body.className = `theme-${currentData.zone} ${this.crtEnabled ? '' : 'no-crt'}`;
+
+    if (this.bgCanvas) {
+      this.bgCanvas.setZone(currentData.zone);
+    }
+
+    // Update Bottom HUD
+    this.updateHUD();
+
+    // Update URL hash
+    window.location.hash = `slide-${currentData.id}`;
+
+    // Update overview modal highlight
+    document.querySelectorAll('.overview-card').forEach((c, i) => {
+      c.classList.toggle('current', i === index);
+    });
+  }
+
+  nextSlide() {
+    if (this.currentIndex < this.totalSlides - 1) {
+      this.goToSlide(this.currentIndex + 1);
+    }
+  }
+
+  prevSlide() {
+    if (this.currentIndex > 0) {
+      this.goToSlide(this.currentIndex - 1);
+    }
+  }
+
+  updateHUD() {
+    const currentData = this.slidesData[this.currentIndex];
+    
+    const lvEl = document.getElementById('hud-lv-val');
+    if (lvEl) lvEl.textContent = `LV ${currentData.id}`;
+
+    const hpTextEl = document.getElementById('hud-hp-text');
+    if (hpTextEl) hpTextEl.textContent = `${currentData.id}/${this.totalSlides}`;
+
+    const hpFillEl = document.getElementById('hud-hp-fill');
+    if (hpFillEl) {
+      const pct = Math.max(8, (currentData.id / this.totalSlides) * 100);
+      hpFillEl.style.width = `${pct}%`;
+    }
+
+    const slideNumEl = document.getElementById('hud-slide-num');
+    if (slideNumEl) slideNumEl.textContent = `SLIDE ${currentData.id} / ${this.totalSlides}`;
+  }
+
+  toggleOverview(forceState) {
+    const modal = document.getElementById('slide-overview-modal');
+    if (!modal) return;
+    const isOpen = forceState !== undefined ? forceState : !modal.classList.contains('open');
+    modal.classList.toggle('open', isOpen);
+    if (isOpen && window.undertaleAudio) {
+      window.undertaleAudio.playMenuSelect();
+    }
+  }
+
+  toggleCRT() {
+    this.crtEnabled = !this.crtEnabled;
+    document.body.classList.toggle('no-crt', !this.crtEnabled);
+    if (window.undertaleAudio) window.undertaleAudio.playMenuSelect();
+  }
+
+  toggleAudio() {
+    if (window.undertaleAudio) {
+      const isMuted = window.undertaleAudio.toggleMute();
+      const btn = document.getElementById('btn-sound-toggle');
+      if (btn) {
+        btn.innerHTML = `<span class="pixel-heart"></span> ${isMuted ? 'UNMUTE' : 'MUTE'}`;
+      }
+    }
+  }
+
+  toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  setupEventListeners() {
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      // Audio context unlock
+      if (window.undertaleAudio) window.undertaleAudio.init();
+
+      switch (e.key) {
+        case 'ArrowRight':
+        case ' ':
+        case 'PageDown':
+        case 'j':
+        case 'J':
+          this.nextSlide();
+          break;
+        case 'ArrowLeft':
+        case 'Backspace':
+        case 'PageUp':
+        case 'k':
+        case 'K':
+          this.prevSlide();
+          break;
+        case 'Home':
+          this.goToSlide(0);
+          break;
+        case 'End':
+          this.goToSlide(this.totalSlides - 1);
+          break;
+        case 'o':
+        case 'O':
+        case 'm':
+        case 'M':
+          this.toggleOverview();
+          break;
+        case 'f':
+        case 'F':
+          this.toggleFullscreen();
+          break;
+        case 'c':
+        case 'C':
+          this.toggleCRT();
+          break;
+        case 's':
+        case 'S':
+          this.toggleAudio();
+          break;
+        case 'p':
+        case 'P':
+          window.print();
+          break;
+        case 'Escape':
+          this.toggleOverview(false);
+          break;
+      }
+    });
+
+    // Touch Swipe support
+    let touchStartX = 0;
+    window.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+      if (window.undertaleAudio) window.undertaleAudio.init();
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      const touchEndX = e.changedTouches[0].screenX;
+      if (touchEndX < touchStartX - 60) {
+        this.nextSlide();
+      } else if (touchEndX > touchStartX + 60) {
+        this.prevSlide();
+      }
+    }, { passive: true });
+
+    // Buttons
+    document.getElementById('btn-next')?.addEventListener('click', () => this.nextSlide());
+    document.getElementById('btn-prev')?.addEventListener('click', () => this.prevSlide());
+    document.getElementById('btn-map')?.addEventListener('click', () => this.toggleOverview());
+    document.getElementById('btn-crt')?.addEventListener('click', () => this.toggleCRT());
+    document.getElementById('btn-sound-toggle')?.addEventListener('click', () => this.toggleAudio());
+    document.getElementById('btn-close-modal')?.addEventListener('click', () => this.toggleOverview(false));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  window.presentation = new PresentationEngine();
+});
