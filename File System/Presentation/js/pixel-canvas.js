@@ -81,6 +81,8 @@ class PixelBackgroundCanvas {
 
   getZoneColors() {
     switch (this.currentZone) {
+      case 'treasuremap':
+        return ['#f59e0b', '#fbbf24', '#d97706', '#fde68a', '#ffffff', '#b45309'];
       case 'blizzard':
         return ['#ffffff', '#e0f2fe', '#bae6fd', '#7dd3fc', '#38bdf8', '#ffedd5', '#fed7aa', '#f97316'];
       case 'ruins':
@@ -119,7 +121,103 @@ class PixelBackgroundCanvas {
     // ZONE-SPECIFIC BACKGROUND SHADERS & EFFECTS
     // -------------------------------------------------------------
 
-    if (this.currentZone === 'blizzard') {
+    if (this.currentZone === 'treasuremap') {
+      // Treasure Map: Ancient Parchment Grid, Rotating Compass Rose & Dashed Expedition Route
+      this.ctx.save();
+      this.ctx.strokeStyle = 'rgba(245, 158, 11, 0.12)';
+      this.ctx.lineWidth = 1;
+      this.ctx.setLineDash([4, 8]);
+      const mapGrid = 64;
+      for (let x = 0; x < this.width; x += mapGrid) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, 0);
+        this.ctx.lineTo(x, this.height);
+        this.ctx.stroke();
+      }
+      for (let y = 0; y < this.height; y += mapGrid) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, y);
+        this.ctx.lineTo(this.width, y);
+        this.ctx.stroke();
+      }
+
+      // Compass Rose in Top-Right
+      const crX = this.width - 120;
+      const crY = 120;
+      const crR = 55;
+      this.ctx.setLineDash([]);
+      this.ctx.strokeStyle = 'rgba(251, 191, 36, 0.25)';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(crX, crY, crR, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.beginPath();
+      this.ctx.arc(crX, crY, crR * 0.4, 0, Math.PI * 2);
+      this.ctx.stroke();
+
+      // Rotating Compass Needles
+      this.ctx.save();
+      this.ctx.translate(crX, crY);
+      this.ctx.rotate(time * 0.0003);
+      this.ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, -crR * 1.2);
+      this.ctx.lineTo(0, crR * 1.2);
+      this.ctx.moveTo(-crR * 1.2, 0);
+      this.ctx.lineTo(crR * 1.2, 0);
+      this.ctx.stroke();
+      this.ctx.restore();
+
+      // Expedition Trail Waypoints connecting Zones across screen
+      const waypoints = [
+        { x: this.width * 0.10, y: this.height * 0.28 },
+        { x: this.width * 0.28, y: this.height * 0.65 },
+        { x: this.width * 0.48, y: this.height * 0.35 },
+        { x: this.width * 0.68, y: this.height * 0.72 },
+        { x: this.width * 0.86, y: this.height * 0.42 }
+      ];
+
+      this.ctx.strokeStyle = 'rgba(234, 179, 8, 0.28)';
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([6, 6]);
+      this.ctx.beginPath();
+      waypoints.forEach((wp, i) => {
+        if (i === 0) this.ctx.moveTo(wp.x, wp.y);
+        else this.ctx.lineTo(wp.x, wp.y);
+      });
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      // Draw 'X' marks at each island waypoint
+      waypoints.forEach((wp) => {
+        this.ctx.strokeStyle = 'rgba(249, 115, 22, 0.5)';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(wp.x - 7, wp.y - 7);
+        this.ctx.lineTo(wp.x + 7, wp.y + 7);
+        this.ctx.moveTo(wp.x + 7, wp.y - 7);
+        this.ctx.lineTo(wp.x - 7, wp.y + 7);
+        this.ctx.stroke();
+      });
+
+      this.ctx.restore();
+
+      // Drifting Amber Dust Motes
+      this.particles.forEach((p) => {
+        p.y -= 0.5;
+        p.x += Math.sin(time * 0.002 + p.pulse) * 0.5;
+        if (p.y < -10) p.y = this.height + 10;
+        if (p.x > this.width) p.x = 0;
+        if (p.x < 0) p.x = this.width;
+
+        this.ctx.fillStyle = p.color;
+        this.ctx.globalAlpha = p.alpha * 0.8;
+        this.ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+      });
+      this.ctx.globalAlpha = 1.0;
+
+    } else if (this.currentZone === 'blizzard') {
       // Blizzard: Raging Snowstorm & Diagonal Howling Wind Streaks
       this.ctx.save();
       this.ctx.strokeStyle = 'rgba(186, 230, 253, 0.18)';

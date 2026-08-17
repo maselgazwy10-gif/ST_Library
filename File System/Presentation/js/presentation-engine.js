@@ -4,7 +4,7 @@ class PresentationEngine {
   constructor() {
     this.currentIndex = 0;
     this.slides = [];
-    this.maxSlides = window.PRESENTATION_MAX_SLIDES || (typeof SLIDES_DATA !== 'undefined' ? SLIDES_DATA.length : 62);
+    this.maxSlides = window.PRESENTATION_MAX_SLIDES || (typeof SLIDES_DATA !== 'undefined' ? SLIDES_DATA.length : 63);
     this.soundEnabled = true;
     this.crtEnabled = true;
     this.cursorEnabled = true;

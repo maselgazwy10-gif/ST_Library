@@ -118,6 +118,15 @@ body.theme-blizzard {
   --text-dim: #bae6fd;
 }
 
+body.theme-treasuremap {
+  --bg-primary: #120b04;
+  --bg-secondary: #23160a;
+  --border-color: #d97706;
+  --accent-color: #fbbf24;
+  --text-main: #fef3c7;
+  --text-dim: #d97706;
+}
+
 /* --------------------------------------------------------------------------
    Base Styles & Reset
    -------------------------------------------------------------------------- */
