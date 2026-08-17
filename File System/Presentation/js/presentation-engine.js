@@ -4,7 +4,7 @@ class PresentationEngine {
   constructor() {
     this.currentIndex = 0;
     this.slides = [];
-    this.maxSlides = window.PRESENTATION_MAX_SLIDES || 86;
+    this.maxSlides = window.PRESENTATION_MAX_SLIDES || (typeof SLIDES_DATA !== 'undefined' ? SLIDES_DATA.length : 62);
     this.soundEnabled = true;
     this.crtEnabled = true;
     this.cursorEnabled = true;
@@ -58,8 +58,9 @@ class PresentationEngine {
       const now = Date.now();
       if (now - lastTrailTime > 45) {
         lastTrailTime = now;
+        const isFire = cursor.classList.contains('fire-cursor');
         const trail = document.createElement('div');
-        trail.className = 'cursor-trail';
+        trail.className = 'cursor-trail' + (isFire ? ' fire-trail' : '');
         trail.style.left = `${e.clientX}px`;
         trail.style.top = `${e.clientY}px`;
         document.body.appendChild(trail);
@@ -94,12 +95,15 @@ class PresentationEngine {
       slideEl.innerHTML = `
         <div class="slide-header">
           <div class="slide-meta-row">
-            <span class="slide-zone-badge">${slide.zoneName || 'Zone'}</span>
+            <div class="slide-meta-left">
+              <span class="slide-zone-badge">${slide.zoneName || 'Zone'}</span>
+              <span class="slide-num-badge">SLIDE ${slide.id}</span>
+            </div>
             <span class="slide-chapter">${slide.chapter || ''}</span>
           </div>
           <div class="slide-title-wrapper">
             <h1 class="slide-title">
-              <span class="pixel-heart"></span> Slide ${slide.id} — ${slide.title}
+              <span class="pixel-heart"></span> ${slide.title}
             </h1>
             ${slide.subtitle ? `<div class="slide-subtitle">${slide.subtitle}</div>` : ''}
           </div>
@@ -183,6 +187,11 @@ class PresentationEngine {
 
     const currentData = this.slidesData[this.currentIndex];
     document.body.className = `theme-${currentData.zone} ${this.crtEnabled ? '' : 'no-crt'}`;
+
+    const cursor = document.getElementById('pixel-soul-cursor');
+    if (cursor) {
+      cursor.classList.toggle('fire-cursor', currentData.zone === 'blizzard');
+    }
 
     if (this.bgCanvas) {
       this.bgCanvas.setZone(currentData.zone);

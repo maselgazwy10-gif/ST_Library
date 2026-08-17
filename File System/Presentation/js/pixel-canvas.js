@@ -62,15 +62,15 @@ class PixelBackgroundCanvas {
 
   initZone() {
     this.particles = [];
-    const count = this.currentZone === 'snowdin' || this.currentZone === 'hotland' ? 90 : 65;
+    const count = this.currentZone === 'blizzard' ? 140 : (this.currentZone === 'snowdin' || this.currentZone === 'hotland' ? 90 : 65);
 
     for (let i = 0; i < count; i++) {
       this.particles.push({
         x: Math.random() * this.width,
         y: Math.random() * this.height,
         size: Math.floor(Math.random() * 4) + 2,
-        speedX: (Math.random() - 0.5) * 1.5,
-        speedY: (Math.random() - 0.5) * 1.5,
+        speedX: this.currentZone === 'blizzard' ? (Math.random() * 8 + 6) : (Math.random() - 0.5) * 1.5,
+        speedY: this.currentZone === 'blizzard' ? (Math.random() * 4 + 2) : (Math.random() - 0.5) * 1.5,
         alpha: Math.random() * 0.7 + 0.3,
         pulse: Math.random() * Math.PI * 2,
         layer: Math.random() > 0.5 ? 1 : 2,
@@ -81,6 +81,8 @@ class PixelBackgroundCanvas {
 
   getZoneColors() {
     switch (this.currentZone) {
+      case 'blizzard':
+        return ['#ffffff', '#e0f2fe', '#bae6fd', '#7dd3fc', '#38bdf8', '#ffedd5', '#fed7aa', '#f97316'];
       case 'ruins':
         return ['#d8b4fe', '#c084fc', '#a855f7', '#7e22ce', '#ffffff'];
       case 'snowdin':
@@ -117,7 +119,42 @@ class PixelBackgroundCanvas {
     // ZONE-SPECIFIC BACKGROUND SHADERS & EFFECTS
     // -------------------------------------------------------------
 
-    if (this.currentZone === 'ruins') {
+    if (this.currentZone === 'blizzard') {
+      // Blizzard: Raging Snowstorm & Diagonal Howling Wind Streaks
+      this.ctx.save();
+      this.ctx.strokeStyle = 'rgba(186, 230, 253, 0.18)';
+      this.ctx.lineWidth = 1.5;
+      const windOffset = (this.tick * 16) % 320;
+      for (let x = -this.height * 2; x < this.width + this.height; x += 140) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + windOffset, 0);
+        this.ctx.lineTo(x + windOffset + 240, this.height);
+        this.ctx.stroke();
+      }
+      this.ctx.restore();
+
+      // Rapidly swirling snowflakes & ice shards
+      this.particles.forEach((p) => {
+        const speedMultiplier = p.layer === 2 ? 1.6 : 1.0;
+        p.x += (p.speedX || 8) * speedMultiplier;
+        p.y += (p.speedY || 3) * speedMultiplier;
+        if (p.x > this.width + 10) {
+          p.x = -20;
+          p.y = Math.random() * this.height;
+        }
+        if (p.y > this.height + 10) {
+          p.y = -10;
+          p.x = Math.random() * this.width;
+        }
+
+        this.ctx.fillStyle = p.color;
+        this.ctx.globalAlpha = p.layer === 2 ? 0.95 : 0.6;
+        const pSize = p.size * (p.layer === 2 ? 1.6 : 1);
+        this.ctx.fillRect(Math.floor(p.x), Math.floor(p.y), pSize, pSize);
+      });
+      this.ctx.globalAlpha = 1.0;
+
+    } else if (this.currentZone === 'ruins') {
       // Ruins: Glowing Mystic Rune Circle in center
       const centerX = this.width / 2;
       const centerY = this.height / 2;

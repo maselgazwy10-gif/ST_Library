@@ -109,6 +109,15 @@ body.theme-surface {
   --accent-color: #fbbf24;
 }
 
+body.theme-blizzard {
+  --bg-primary: #020914;
+  --bg-secondary: #051a33;
+  --border-color: #38bdf8;
+  --accent-color: #f97316;
+  --text-main: #f0fdfa;
+  --text-dim: #bae6fd;
+}
+
 /* --------------------------------------------------------------------------
    Base Styles & Reset
    -------------------------------------------------------------------------- */
@@ -135,7 +144,7 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
-   Interactive Pixel Soul Cursor
+   Interactive Pixel Soul Cursor & Flame Soul Mode
    -------------------------------------------------------------------------- */
 #pixel-soul-cursor {
   position: fixed;
@@ -156,6 +165,17 @@ html, body {
   transition: transform 0.05s ease-out, filter 0.2s ease;
 }
 
+#pixel-soul-cursor.fire-cursor {
+  background: linear-gradient(135deg, #ef4444 0%, #f97316 45%, #facc15 100%) !important;
+  filter: drop-shadow(0 0 10px #ff4400) drop-shadow(0 0 20px #ff0000) drop-shadow(0 0 30px #facc15) !important;
+  animation: fireSoulPulse 0.35s infinite alternate ease-in-out !important;
+}
+
+@keyframes fireSoulPulse {
+  0% { transform: translate(-50%, -50%) scale(1.15) rotate(-4deg); filter: drop-shadow(0 0 8px #ff3b00) drop-shadow(0 0 16px #ff0000); }
+  100% { transform: translate(-50%, -50%) scale(1.45) rotate(4deg); filter: drop-shadow(0 0 22px #ff0000) drop-shadow(0 0 14px #ffbb00); }
+}
+
 body:hover #pixel-soul-cursor {
   opacity: 1;
 }
@@ -169,6 +189,11 @@ body:hover #pixel-soul-cursor {
   z-index: 9999;
   transform: translate(-50%, -50%);
   animation: fadeOutTrail 0.35s linear forwards;
+}
+
+.cursor-trail.fire-trail {
+  background-color: rgba(249, 115, 22, 0.85) !important;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.95);
 }
 
 @keyframes fadeOutTrail {

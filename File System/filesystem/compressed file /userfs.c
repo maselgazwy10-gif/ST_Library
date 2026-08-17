@@ -37,7 +37,7 @@
  */
 
 #define UFS_MAGIC 0x55465332u
-#define UFS_VERSION 2u
+#define UFS_VERSION 3u
 
 #define UFS_MIN_IMAGE (8u * 1024u * 1024u)
 #define UFS_MAX_ZONES 32u
@@ -85,9 +85,17 @@ typedef struct __attribute__((packed)) {
     uint16_t extent_count;
     uint32_t generation;
     uint64_t extent_overflow_id;
+
+    /*
+     * Number of directory entries that point to this file Z-Node.
+     * A value of 1 is the normal single-name case.
+     * The data is freed only when the count reaches zero.
+     */
+    uint32_t link_count;
+
     ufs_extent_disk_t extents[UFS_EXTENTS];
     uint8_t reserved[
-        512 - (4 + 2 + 2 + 4 + 2 + 2 + 8 + 8 + 2 + 2 + 4 + 8 +
+        512 - (4 + 2 + 2 + 4 + 2 + 2 + 8 + 8 + 2 + 2 + 4 + 8 + 4 +
                (UFS_EXTENTS * sizeof(ufs_extent_disk_t)))
     ];
 } znode_disk_t;
@@ -1286,6 +1294,7 @@ static int object_znode_alloc(int preferred_zone, int type, uint64_t parent,
                 zn.size = 0;
                 zn.parent_id = parent;
                 zn.preferred_granularity = UFS_MEDIUM_GRAN;
+                zn.link_count = 1;
                 zn.generation = 1;
 
                 *out_id = make_object_id(z, local);
@@ -2530,6 +2539,117 @@ int ufs_create(const char *path) {
     return 0;
 }
 
+
+/*
+ * Create a hard link.
+ *
+ * The new directory entry points to the same Z-Node as oldpath.
+ * No data blocks or extents are copied.
+ */
+int ufs_link(const char *oldpath, const char *newpath) {
+    if (!fs_mounted()) return -1;
+    if (!oldpath || !newpath) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    uint64_t object_id;
+
+    /*
+     * The source must already exist.
+     */
+    if (resolve_path(oldpath, &object_id, NULL, NULL) < 0)
+        return -1;
+
+    znode_disk_t zn;
+
+    if (read_znode(object_id, &zn) < 0)
+        return -1;
+
+    /*
+     * Do not allow directory hard links. That would create cycles
+     * and would conflict with our existing directory semantics.
+     */
+    if (zn.type == UFS_TYPE_DIR) {
+        errno = EPERM;
+        return -1;
+    }
+
+    /*
+     * The destination must not already exist.
+     * resolve_path() gives us ENOENT for the final missing component.
+     */
+    uint64_t existing;
+    uint64_t parent;
+    char name[UFS_MAX_NAME + 1];
+
+    if (resolve_path(newpath,
+                     &existing,
+                     &parent,
+                     name) == 0) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    if (errno != ENOENT)
+        return -1;
+
+    /*
+     * Also protect against a destination name that is already present
+     * in the parent directory but happens not to resolve through the
+     * path traversal above.
+     */
+    if (directory_find(parent, name, NULL, NULL) == 0) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    if (zn.link_count == UINT32_MAX) {
+        errno = EMLINK;
+        return -1;
+    }
+
+    /*
+     * Both the directory entry and the link-count increment belong
+     * to the same transaction.
+     */
+    transaction_t tx = {0};
+
+    if (journal_begin(&tx) < 0)
+        return -1;
+
+    ++zn.link_count;
+
+    if (journal_znode(&tx, object_id, &zn) < 0) {
+        tx.active = 0;
+        return -1;
+    }
+
+    if (add_dir_entry(&tx,
+                      parent,
+                      name,
+                      object_id,
+                      UFS_TYPE_FILE) < 0) {
+        tx.active = 0;
+        return -1;
+    }
+
+    if (journal_commit(&tx) < 0)
+        return -1;
+
+    /*
+     * Persist the updated Z-Node after the commit. On a crash before
+     * this write, replay_journal() will restore the journaled Z-Node.
+     */
+    if (write_znode(object_id, &zn) < 0)
+        return -1;
+
+    if (flush_superblock() < 0)
+        return -1;
+
+    return 0;
+}
+
 int ufs_mkdir(const char *path) {
     if (!fs_mounted()) return -1;
 
@@ -2861,24 +2981,101 @@ int ufs_unlink(const char *path) {
 
     uint64_t id, parent;
     char name[UFS_MAX_NAME + 1];
-    if (resolve_path(path, &id, &parent, name) < 0) return -1;
+
+    if (resolve_path(path,
+                     &id,
+                     &parent,
+                     name) < 0) {
+        return -1;
+    }
 
     znode_disk_t zn;
-    if (read_znode(id, &zn) < 0) return -1;
+
+    if (read_znode(id, &zn) < 0)
+        return -1;
+
     if (zn.type == UFS_TYPE_DIR) {
         errno = EISDIR;
         return -1;
     }
 
+    /*
+     * Normal files start with one link. If more than one name points
+     * to this Z-Node, removing one name must NOT free its data.
+     */
+    if (zn.link_count > 1) {
+        transaction_t tx = {0};
+
+        if (journal_begin(&tx) < 0)
+            return -1;
+
+        /*
+         * Remove the directory name and decrement the shared
+         * Z-Node's link count in the same transaction.
+         */
+        if (remove_dir_entry(&tx,
+                             parent,
+                             name) < 0) {
+            tx.active = 0;
+            return -1;
+        }
+
+        --zn.link_count;
+
+        if (journal_znode(&tx,
+                          id,
+                          &zn) < 0) {
+            tx.active = 0;
+            return -1;
+        }
+
+        if (journal_commit(&tx) < 0)
+            return -1;
+
+        if (write_znode(id, &zn) < 0)
+            return -1;
+
+        if (flush_superblock() < 0)
+            return -1;
+
+        return 0;
+    }
+
+    /*
+     * This is the last hard link. Preserve the original deletion
+     * behavior: remove the directory entry and finally release the
+     * Z-Node and its extents.
+     */
     transaction_t tx = {0};
-    if (journal_begin(&tx) < 0) return -1;
-    if (remove_dir_entry(&tx, parent, name) < 0) return -1;
 
-    if (object_znode_free(id) < 0) return -1;
-    if (journal_commit(&tx) < 0) return -1;
+    if (journal_begin(&tx) < 0)
+        return -1;
 
-    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z)
-        if (g_fs.zone_bitmaps[z] && flush_zone_bitmap(z) < 0) return -1;
+    if (remove_dir_entry(&tx,
+                         parent,
+                         name) < 0) {
+        tx.active = 0;
+        return -1;
+    }
+
+    if (object_znode_free(id) < 0) {
+        tx.active = 0;
+        return -1;
+    }
+
+    if (journal_commit(&tx) < 0)
+        return -1;
+
+    for (uint32_t z = 0;
+         z < g_fs.sb.zone_count;
+         ++z) {
+
+        if (g_fs.zone_bitmaps[z] &&
+            flush_zone_bitmap(z) < 0) {
+            return -1;
+        }
+    }
+
     return flush_superblock();
 }
 

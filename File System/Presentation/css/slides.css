@@ -53,24 +53,44 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.slide-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .slide-zone-badge {
   font-family: var(--font-pixel);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--accent-color);
-  background: rgba(0, 0, 0, 0.7);
-  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 5px 12px;
   border: 2px solid var(--accent-color);
   letter-spacing: 1px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.25);
+  text-transform: uppercase;
+}
+
+.slide-num-badge {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-yellow);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 5px 12px;
+  border: 2px solid var(--ut-yellow);
+  letter-spacing: 1px;
+  box-shadow: 0 0 10px rgba(255, 255, 0, 0.25);
 }
 
 .slide-chapter {
   font-family: var(--font-retro);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ut-gray-text);
   letter-spacing: 1px;
+  text-shadow: 1px 1px #000000;
 }
 
 .slide-title-wrapper {
@@ -78,22 +98,25 @@
   align-items: baseline;
   gap: 16px;
   flex-wrap: wrap;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  padding-bottom: 6px;
 }
 
 .slide-title {
   font-family: var(--font-pixel);
-  font-size: 26px;
+  font-size: 25px;
   color: #ffffff;
   letter-spacing: 1px;
-  text-shadow: 2px 2px #000000;
-  line-height: 1.3;
+  text-shadow: 2px 2px 0 #000000, 0 0 12px rgba(255, 255, 255, 0.4);
+  line-height: 1.35;
 }
 
 .slide-subtitle {
   font-family: var(--font-terminal);
-  font-size: 24px;
+  font-size: 25px;
   color: var(--ut-yellow);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  text-shadow: 1px 1px 0 #000000;
 }
 
 /* --------------------------------------------------------------------------
@@ -528,7 +551,187 @@
 }
 
 /* --------------------------------------------------------------------------
-   Utility Classes
+   Feature Cards, Themes, Invariants & QA Enhancements (Enhanced VFX)
+   -------------------------------------------------------------------------- */
+.feature-card {
+  background: rgba(8, 8, 18, 0.95);
+  border: 3px solid var(--border-color);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: inset 0 0 0 1px #000000, 0 4px 12px rgba(0, 0, 0, 0.6);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: inset 0 0 0 1px #000000, 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px var(--accent-color);
+}
+
+.feature-num {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.feature-title {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.feature-desc {
+  font-size: 17px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.feature-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Border Accent Colors */
+.cyan-border { border-color: var(--ut-cyan) !important; }
+.yellow-border { border-color: var(--ut-yellow) !important; }
+.green-border { border-color: var(--ut-green) !important; }
+.orange-border { border-color: var(--ut-orange) !important; }
+.purple-border { border-color: var(--ut-purple) !important; }
+.red-border { border-color: var(--ut-red) !important; }
+
+/* Theme Colors for Battle Cards */
+.cyan-theme { border-color: var(--ut-cyan) !important; }
+.cyan-theme .card-title { color: var(--ut-cyan) !important; text-shadow: 0 0 8px rgba(0, 255, 255, 0.4); }
+
+.yellow-theme { border-color: var(--ut-yellow) !important; }
+.yellow-theme .card-title { color: var(--ut-yellow) !important; text-shadow: 0 0 8px rgba(255, 255, 0, 0.4); }
+
+.green-theme { border-color: var(--ut-green) !important; }
+.green-theme .card-title { color: var(--ut-green) !important; text-shadow: 0 0 8px rgba(0, 255, 102, 0.4); }
+
+.orange-theme { border-color: var(--ut-orange) !important; }
+.orange-theme .card-title { color: var(--ut-orange) !important; text-shadow: 0 0 8px rgba(255, 136, 0, 0.4); }
+
+.purple-theme { border-color: var(--ut-purple) !important; }
+.purple-theme .card-title { color: var(--ut-purple) !important; text-shadow: 0 0 8px rgba(168, 85, 247, 0.4); }
+
+.red-theme { border-color: var(--ut-red) !important; }
+.red-theme .card-title { color: var(--ut-red) !important; text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }
+
+/* QA Blocks */
+.qa-block {
+  background: rgba(12, 12, 22, 0.95);
+  border: 2px solid var(--border-color);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.qa-block:hover {
+  transform: translateY(-2px);
+  border-color: var(--ut-yellow);
+}
+
+.qa-q {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-yellow);
+  line-height: 1.3;
+}
+
+.qa-a {
+  font-size: 17px;
+  color: #ffffff;
+  line-height: 1.4;
+}
+
+/* Invariants & Coherence */
+.invariants-list, .coherence-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inv-card, .coh-item {
+  background: rgba(10, 10, 20, 0.9);
+  border: 2px solid var(--border-color);
+  padding: 10px 14px;
+  font-size: 18px;
+  color: #f1f5f9;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.inv-card:hover, .coh-item:hover {
+  transform: translateX(4px);
+  border-color: var(--ut-cyan);
+}
+
+.adapt-card {
+  background: rgba(12, 12, 24, 0.95);
+  border: 2px solid var(--border-color);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adapt-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+}
+
+.adapt-desc {
+  font-size: 17px;
+  color: var(--text-dim);
+}
+
+/* Visual Chain */
+.chain-flow-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.chain-link {
+  background: #111122;
+  border: 2px solid var(--ut-cyan);
+  padding: 8px 18px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #ffffff;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.chain-down {
+  font-size: 15px;
+  color: var(--ut-yellow);
+  font-family: var(--font-terminal);
+}
+
+.lifecycle-dual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pixel-star-large {
+  font-size: 28px;
+  color: var(--ut-yellow);
+  text-shadow: 0 0 12px rgba(255, 255, 0, 0.8);
+  animation: starTwinkle 1.8s infinite ease-in-out;
+  display: inline-block;
+}
+
+/* --------------------------------------------------------------------------
+   Utility Classes & Enhanced Contrast
    -------------------------------------------------------------------------- */
 .mt-1 { margin-top: 4px; }
 .mt-2 { margin-top: 8px; }
@@ -540,4 +743,4 @@
 .text-sm { font-size: 18px !important; }
 .text-lg { font-size: 24px !important; }
 .text-center { text-align: center; }
-.text-muted { color: var(--ut-gray-text); }
+.text-muted { color: #94a3b8 !important; }
