@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/types.h>
 
 /*
@@ -77,37 +78,27 @@ typedef struct __attribute__((packed)) {
 #define UFS_MAX_INLINE_BYTES 384u
 
 typedef struct __attribute__((packed)) {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size_class;
-    uint32_t local_id;
-    uint16_t type;
-    uint16_t flags;
-    uint64_t size;
-    uint64_t parent_id;
-    uint16_t preferred_granularity;
-    uint16_t extent_count;
-    uint32_t generation;
-    uint64_t extent_overflow_id;
-
-    /*
-     * Number of directory entries that point to this file Z-Node.
-     * A value of 1 is the normal single-name case.
-     * The data is freed only when the count reaches zero.
-     */
-    uint32_t link_count;
-
-    /* Pointer to optional xattr metadata page (zone << 32 | unit) */
-    uint64_t xattr_page_id;
+    uint32_t magic;                  /* 4 B */
+    uint8_t  version;                /* 1 B */
+    uint8_t  type;                   /* 1 B */
+    uint16_t flags;                  /* 2 B */
+    uint16_t local_id;               /* 2 B */
+    uint16_t link_count;             /* 2 B */
+    uint16_t preferred_granularity;  /* 2 B */
+    uint16_t extent_count;           /* 2 B */
+    uint32_t generation;             /* 4 B */
+    uint64_t size;                   /* 8 B */
+    uint64_t parent_id;              /* 8 B */
+    uint64_t extent_overflow_id;     /* 8 B */
+    uint64_t xattr_page_id;          /* 8 B */
+    uint32_t mtime;                  /* 4 B */
+    uint32_t atime;                  /* 4 B */
+    uint32_t ctime;                  /* 4 B */
 
     union {
         ufs_extent_disk_t extents[UFS_EXTENTS];
         uint8_t inline_data[UFS_EXTENTS * sizeof(ufs_extent_disk_t)];
     };
-    uint8_t reserved[
-        512 - (4 + 2 + 2 + 4 + 2 + 2 + 8 + 8 + 2 + 2 + 4 + 8 + 4 + 8 +
-               (UFS_EXTENTS * sizeof(ufs_extent_disk_t)))
-    ];
 } znode_disk_t;
 
 _Static_assert(sizeof(znode_disk_t) == 512, "znode must be 512 bytes");
@@ -1360,15 +1351,18 @@ static int object_znode_alloc(int preferred_zone, int type, uint64_t parent,
                 memset(&zn, 0, sizeof(zn));
                 zn.magic = UFS_ZNODE_MAGIC;
                 zn.version = UFS_VERSION;
-                zn.size_class = 1;
-                zn.local_id = local;
-                zn.type = (uint16_t)type;
+                zn.local_id = (uint16_t)local;
+                zn.type = (uint8_t)type;
                 zn.flags = (type == UFS_TYPE_FILE) ? UFS_FLAG_INLINE : 0;
                 zn.size = 0;
                 zn.parent_id = parent;
                 zn.preferred_granularity = UFS_MEDIUM_GRAN;
                 zn.link_count = 1;
                 zn.generation = 1;
+                time_t now = time(NULL);
+                zn.mtime = (uint32_t)now;
+                zn.atime = (uint32_t)now;
+                zn.ctime = (uint32_t)now;
 
                 *out_id = make_object_id(z, local);
                 if (write_znode(*out_id, &zn) < 0) return -1;
@@ -2708,7 +2702,7 @@ int ufs_link(const char *oldpath, const char *newpath) {
         return -1;
     }
 
-    if (zn.link_count == UINT32_MAX) {
+    if (zn.link_count == UINT16_MAX) {
         errno = EMLINK;
         return -1;
     }
@@ -3529,27 +3523,97 @@ int ufs_stat(const char *path, struct ufs_stat *st) {
     znode_disk_t zn;
     if (read_znode(id, &zn) < 0) return -1;
 
+    memset(st, 0, sizeof(*st));
     st->type = zn.type;
     st->size = (size_t)zn.size;
+    st->zone_id = object_zone(id);
+    st->object_id = id;
+    st->extent_count = zn.extent_count;
+    st->mtime = zn.mtime;
+    st->atime = zn.atime;
+    st->ctime = zn.ctime;
+    st->link_count = zn.link_count;
+    st->real_zone_count = 0;
+
     if (zn.flags & UFS_FLAG_INLINE) {
         st->physical_size = 0;
+        st->extent_count = 0;
+        st->logical_block_count = 0;
+        st->count_512b_blocks = 0;
+        st->count_4kb_blocks = 0;
+        st->count_16kb_blocks = 0;
     } else {
-        uint64_t total_units = 0;
+        size_t phys_sum = 0;
         for (size_t i = 0; i < zn.extent_count && i < UFS_EXTENTS; ++i) {
-            total_units += zn.extents[i].physical_units;
+            ufs_extent_disk_t *ex = &zn.extents[i];
+            size_t extent_bytes = (size_t)ex->physical_units * UFS_UNIT;
+            phys_sum += extent_bytes;
+            st->logical_block_count += (uint32_t)((ex->logical_length + UFS_UNIT - 1) / UFS_UNIT);
+
+            size_t rem = extent_bytes;
+            st->count_16kb_blocks += (uint32_t)(rem / 16384);
+            rem %= 16384;
+            st->count_4kb_blocks += (uint32_t)(rem / 4096);
+            rem %= 4096;
+            st->count_512b_blocks += (uint32_t)(rem / 512);
+
+            int found = 0;
+            for (uint32_t k = 0; k < st->real_zone_count; k++) {
+                if (st->real_zones[k] == ex->zone_id) { found = 1; break; }
+            }
+            if (!found && st->real_zone_count < 32) {
+                st->real_zones[st->real_zone_count++] = ex->zone_id;
+            }
         }
+
         uint64_t page_id = zn.extent_overflow_id;
         uint32_t guard = 0;
         while (page_id != 0 && guard++ < UFS_MAX_ZONES * UFS_ZNODE_SLOTS) {
             extent_page_disk_t page;
             if (read_extent_page(page_id, &page) < 0) break;
+            st->extent_count += page.count;
             for (uint16_t i = 0; i < page.count; ++i) {
-                total_units += page.extents[i].physical_units;
+                ufs_extent_disk_t *ex = &page.extents[i];
+                size_t extent_bytes = (size_t)ex->physical_units * UFS_UNIT;
+                phys_sum += extent_bytes;
+                st->logical_block_count += (uint32_t)((ex->logical_length + UFS_UNIT - 1) / UFS_UNIT);
+
+                size_t rem = extent_bytes;
+                st->count_16kb_blocks += (uint32_t)(rem / 16384);
+                rem %= 16384;
+                st->count_4kb_blocks += (uint32_t)(rem / 4096);
+                rem %= 4096;
+                st->count_512b_blocks += (uint32_t)(rem / 512);
+
+                int found = 0;
+                for (uint32_t k = 0; k < st->real_zone_count; k++) {
+                    if (st->real_zones[k] == ex->zone_id) { found = 1; break; }
+                }
+                if (!found && st->real_zone_count < 32) {
+                    st->real_zones[st->real_zone_count++] = ex->zone_id;
+                }
             }
             page_id = page.next_id;
         }
-        st->physical_size = (size_t)(total_units * UFS_UNIT);
+        st->physical_size = phys_sum;
     }
+    return 0;
+}
+
+int ufs_statfs(struct ufs_statfs *st) {
+    if (!fs_mounted()) return -1;
+    if (!st) {
+        errno = EINVAL;
+        return -1;
+    }
+    st->magic = g_fs.sb.magic;
+    st->version = g_fs.sb.version;
+    st->image_size = g_fs.sb.image_size;
+    st->total_pages = g_fs.sb.total_pages;
+    st->zone_count = g_fs.sb.zone_count;
+    st->zone_size = g_fs.sb.zone_size;
+    st->root_id = g_fs.sb.root_id;
+    st->clean = g_fs.sb.clean;
     return 0;
 }
 

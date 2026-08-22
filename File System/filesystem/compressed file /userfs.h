@@ -27,6 +27,19 @@ struct ufs_stat {
     int type;
     size_t size;
     size_t physical_size;
+    size_t extent_count;
+    uint32_t zone_id;
+    uint32_t real_zones[32];
+    uint32_t real_zone_count;
+    uint32_t count_512b_blocks;
+    uint32_t count_4kb_blocks;
+    uint32_t count_16kb_blocks;
+    uint32_t logical_block_count;
+    uint64_t object_id;
+    uint32_t link_count;
+    uint64_t mtime;
+    uint64_t atime;
+    uint64_t ctime;
 };
 
 struct ufs_dirent {
@@ -35,9 +48,21 @@ struct ufs_dirent {
     int type;
 };
 
+struct ufs_statfs {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t image_size;
+    uint32_t total_pages;
+    uint32_t zone_count;
+    uint32_t zone_size;
+    uint64_t root_id;
+    uint32_t clean;
+};
+
 int ufs_format(const char *image_path, size_t image_size);
 int ufs_mount(const char *image_path);
 int ufs_unmount(void);
+int ufs_link(const char *oldpath, const char *newpath);
 
 int ufs_create(const char *path);
 int ufs_open(const char *path, int flags);
@@ -55,6 +80,7 @@ int ufs_listdir(const char *path,
                 size_t max_entries);
 
 int ufs_stat(const char *path, struct ufs_stat *st);
+int ufs_statfs(struct ufs_statfs *st);
 
 struct ufs_extent_info {
     uint16_t zone_id;

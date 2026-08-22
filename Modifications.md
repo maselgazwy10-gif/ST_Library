@@ -179,11 +179,11 @@ BEFORE:
 └───────────┴──────────────┴──────────────┴──────────────────────────────┴──────────┘
 
 AFTER (ENHANCED AURAFS):
-┌───────────┬──────────────┬──────────────┬──────────────┬──────────────────────────┬──────────┐
-│ Magic     │ File Size    │ Flags        │ xattr_page_id│ UNION:                   │ Reserved │
-│ (4 Bytes) │ (8 Bytes)    │ [INLINE Bit] │ (8 Bytes)    │ ├── 16 Extents (448 B)   │ (12 B)   │
-│           │              │ (2 Bytes)    │              │ └── 384B Inline Payload  │          │
-└───────────┴──────────────┴──────────────┴──────────────┴──────────────────────────┴──────────┘
+┌───────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────────────────┐
+│ Magic     │ File Size    │ Flags        │ xattr_page_id│ Timestamps   │ UNION:                   │
+│ (4 Bytes) │ (8 Bytes)    │ [INLINE Bit] │ (8 Bytes)    │ (m/a/ctime)  │ ├── 16 Extents (448 B)   │
+│           │              │ (2 Bytes)    │              │ (12 Bytes)   │ └── 384B Inline Payload  │
+└───────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────────────────┘
 ```
 
 ---
@@ -202,9 +202,29 @@ AFTER (ENHANCED AURAFS):
 
 ---
 
-## Part 5: Verification & Unit Test Suite
+## Part 5: Shell & Utility Enhancements (dsfa Port & Debug Suite)
 
-All 7 core features and bug fixes are verified with 100% pass rate in [`test_allocation_innovations.c`](file:///home/kassab/STmicro/FS/presentation/ST_Library/File%20System/filesystem/compressed%20file%20/test_allocation_innovations.c):
+All legacy and utility features from the `dsfa` development branch were scanned, merged, and modernized into `myshell.c` and `userfs.c`:
+
+1. **`ufs_statfs` & `sb` / `fsinfo` Commands**:
+   - Queries and displays live Superblock geometry, clean state, total pages, zone sizes, and active allocations.
+2. **POSIX Hard Linking (`link` & `unlink`)**:
+   - Hard links increment `link_count` atomically in the journal; data is safely freed only when `link_count == 0`.
+3. **Comprehensive File Metadata (`stat <path>`)**:
+   - Displays ISO human-readable timestamps (`mtime`, `atime`, `ctime`), Z-Node slot/ID, block breakdown (512B, 4KB, 16KB units), real data zones, link counts, and 0ms MIME classifications.
+4. **Streaming File Reading (`cat <path>`)**:
+   - Implemented streaming chunked reads (`while ufs_read() > 0`) for arbitrary file sizes.
+5. **Interactive Filesystem Debugger (`debug` Suite)**:
+   - `debug sb` / `debug fs`: Inspects raw Superblock geometry, journal pointers, and zone free-run statistics.
+   - `debug tree [path]`: Recursively prints the directory tree with object IDs and types.
+   - `debug file <path>`: Dumps raw Z-Node flags, physical extent layouts, and extended attributes.
+   - `debug check` / `fsck`: Automated multi-phase consistency checker verifying magic headers, bitmaps, and directory link integrity.
+
+---
+
+## Part 6: Verification & Unit Test Suite
+
+All 7 core features, timestamps, and bug fixes are verified with 100% pass rate in [`test_allocation_innovations.c`](file:///home/kassab/STmicro/FS/presentation/ST_Library/File%20System/filesystem/compressed%20file%20/test_allocation_innovations.c):
 
 ```text
 ============================================================
