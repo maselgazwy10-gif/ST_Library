@@ -72,6 +72,10 @@ typedef struct __attribute__((packed)) {
 
 #define UFS_EXTENT_PAGE_MAGIC 0x45585047u /* EXPG */
 
+#define UFS_FLAG_REGULAR 0x0001u
+#define UFS_FLAG_INLINE  0x0002u
+#define UFS_MAX_INLINE_BYTES 384u
+
 typedef struct __attribute__((packed)) {
     uint32_t magic;
     uint16_t version;
@@ -93,12 +97,44 @@ typedef struct __attribute__((packed)) {
      */
     uint32_t link_count;
 
-    ufs_extent_disk_t extents[UFS_EXTENTS];
+    /* Pointer to optional xattr metadata page (zone << 32 | unit) */
+    uint64_t xattr_page_id;
+
+    union {
+        ufs_extent_disk_t extents[UFS_EXTENTS];
+        uint8_t inline_data[UFS_EXTENTS * sizeof(ufs_extent_disk_t)];
+    };
     uint8_t reserved[
-        512 - (4 + 2 + 2 + 4 + 2 + 2 + 8 + 8 + 2 + 2 + 4 + 8 + 4 +
+        512 - (4 + 2 + 2 + 4 + 2 + 2 + 8 + 8 + 2 + 2 + 4 + 8 + 4 + 8 +
                (UFS_EXTENTS * sizeof(ufs_extent_disk_t)))
     ];
 } znode_disk_t;
+
+_Static_assert(sizeof(znode_disk_t) == 512, "znode must be 512 bytes");
+
+#define UFS_XATTR_PAGE_MAGIC 0x58415452u /* XATR */
+#define UFS_MAX_XATTR_KEY   24u
+#define UFS_MAX_XATTR_VAL   64u
+#define UFS_XATTRS_PER_PAGE 5u
+
+typedef struct __attribute__((packed)) {
+    char name[UFS_MAX_XATTR_KEY];
+    char value[UFS_MAX_XATTR_VAL];
+    uint16_t value_len;
+    uint8_t active;
+    uint8_t reserved;
+} ufs_xattr_entry_disk_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t count;
+    uint64_t next_page_id;
+    ufs_xattr_entry_disk_t entries[UFS_XATTRS_PER_PAGE];
+    uint8_t reserved[512 - (4 + 2 + 2 + 8 + (UFS_XATTRS_PER_PAGE * sizeof(ufs_xattr_entry_disk_t)))];
+} ufs_xattr_page_disk_t;
+
+_Static_assert(sizeof(ufs_xattr_page_disk_t) == 512, "xattr page must be 512 bytes");
 
 #define UFS_EXTENTS_PER_PAGE     ((512u - 16u) / sizeof(ufs_extent_disk_t))
 
@@ -892,6 +928,8 @@ static int choose_zone_for_partial_allocation(
     return 0;
 }
 
+static uint32_t g_zone_cursors[UFS_MAX_ZONES] = {0};
+
 static int allocate_physical_region(uint64_t preferred_zone,
                                     uint64_t bytes,
                                     uint16_t granularity,
@@ -951,43 +989,65 @@ static int allocate_physical_region(uint64_t preferred_zone,
         return -1;
     }
 
+    uint32_t data_first = zh.data_first_unit;
+    uint32_t total_units = zh.total_units;
+    uint32_t usable_units = (total_units > data_first) ? (total_units - data_first) : 0;
+
+    if (usable_units == 0) {
+        errno = ENOSPC;
+        return -1;
+    }
+
+    uint32_t cursor = g_zone_cursors[zone];
+    if (cursor < data_first || cursor >= total_units) {
+        cursor = data_first;
+    }
+
     uint32_t run = 0;
     uint32_t start = 0;
+    uint32_t found_start = 0;
+    int found = 0;
 
-    for (uint32_t u = zh.data_first_unit;
-         u < zh.total_units;
-         ++u) {
+    for (uint32_t step = 0; step < usable_units * 2u; ++step) {
+        uint32_t u = data_first + ((cursor - data_first + step) % usable_units);
 
-        if (!bit_get(
-                g_fs.zone_bitmaps[zone],
-                u)) {
-
-            if (run == 0)
+        if (!bit_get(g_fs.zone_bitmaps[zone], u)) {
+            if (run == 0) start = u;
+            if (u != start + run) {
                 start = u;
-
-            ++run;
+                run = 1;
+            } else {
+                ++run;
+            }
 
             if (run >= target_units) {
-                for (uint32_t i = start;
-                     i < start + target_units;
-                     ++i) {
-                    bit_set(
-                        g_fs.zone_bitmaps[zone],
-                        i);
-                }
-
-                *out_zone = (uint16_t)zone;
-                *out_unit = start;
-                *out_units = target_units;
-                return 0;
+                found_start = start;
+                found = 1;
+                break;
             }
         } else {
             run = 0;
         }
     }
 
-    errno = ENOSPC;
-    return -1;
+    if (!found) {
+        errno = ENOSPC;
+        return -1;
+    }
+
+    for (uint32_t i = found_start; i < found_start + target_units; ++i) {
+        bit_set(g_fs.zone_bitmaps[zone], i);
+    }
+
+    g_zone_cursors[zone] = (found_start + target_units) % total_units;
+    if (g_zone_cursors[zone] < data_first) {
+        g_zone_cursors[zone] = data_first;
+    }
+
+    *out_zone = (uint16_t)zone;
+    *out_unit = found_start;
+    *out_units = target_units;
+    return 0;
 }
 
 static int free_physical_region(uint16_t zone, uint32_t unit, uint32_t units) {
@@ -1112,6 +1172,18 @@ static int mapping_add(znode_disk_t *zn,
                        uint16_t granularity,
                        uint32_t unit,
                        uint32_t units) {
+    /* 1. Attempt coalescing with previous inline extent */
+    if (zn->extent_count > 0 && zn->extent_count <= UFS_EXTENTS) {
+        ufs_extent_disk_t *prev = &zn->extents[zn->extent_count - 1];
+        if (prev->zone_id == zone &&
+            (prev->physical_unit + prev->physical_units) == unit &&
+            (prev->logical_start + prev->logical_length) == logical_start) {
+            prev->physical_units += units;
+            prev->logical_length += logical_length;
+            return 0;
+        }
+    }
+
     if (zn->extent_count < UFS_EXTENTS) {
         size_t i =
             zn->extent_count;
@@ -1291,6 +1363,7 @@ static int object_znode_alloc(int preferred_zone, int type, uint64_t parent,
                 zn.size_class = 1;
                 zn.local_id = local;
                 zn.type = (uint16_t)type;
+                zn.flags = (type == UFS_TYPE_FILE) ? UFS_FLAG_INLINE : 0;
                 zn.size = 0;
                 zn.parent_id = parent;
                 zn.preferred_granularity = UFS_MEDIUM_GRAN;
@@ -1311,63 +1384,98 @@ static int object_znode_alloc(int preferred_zone, int type, uint64_t parent,
     return -1;
 }
 
+static int read_xattr_page(uint64_t xattr_id, ufs_xattr_page_disk_t *out) {
+    uint32_t zone = (uint32_t)(xattr_id >> 32);
+    uint32_t unit = (uint32_t)(xattr_id & 0xFFFFFFFFu);
+    if (zone >= g_fs.sb.zone_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (zone_read_bytes(zone, unit, 0, (unsigned char *)out, sizeof(*out)) < 0) {
+        return -1;
+    }
+    if (out->magic != UFS_XATTR_PAGE_MAGIC) {
+        errno = EIO;
+        return -1;
+    }
+    return 0;
+}
+
+static int write_xattr_page(uint64_t xattr_id, const ufs_xattr_page_disk_t *in) {
+    uint32_t zone = (uint32_t)(xattr_id >> 32);
+    uint32_t unit = (uint32_t)(xattr_id & 0xFFFFFFFFu);
+    if (zone >= g_fs.sb.zone_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    return zone_write_bytes(zone, unit, 0, (const unsigned char *)in, sizeof(*in));
+}
+
 static int object_znode_free(uint64_t id) {
     znode_disk_t zn;
 
     if (read_znode(id, &zn) < 0)
         return -1;
 
-    for (uint32_t i = 0;
-         i < zn.extent_count;
-         ++i) {
-
-        if (free_physical_region(
-                zn.extents[i].zone_id,
-                zn.extents[i].physical_unit,
-                zn.extents[i].physical_units) < 0) {
-            return -1;
-        }
+    if (zn.xattr_page_id != 0) {
+        uint32_t xz = (uint32_t)(zn.xattr_page_id >> 32);
+        uint32_t xu = (uint32_t)(zn.xattr_page_id & 0xFFFFFFFFu);
+        free_physical_region((uint16_t)xz, xu, 1);
     }
 
-    uint64_t page_id =
-        zn.extent_overflow_id;
-
-    uint32_t guard = 0;
-
-    while (page_id != 0 &&
-           guard++ <
-               UFS_MAX_ZONES *
-               UFS_ZNODE_SLOTS) {
-
-        extent_page_disk_t page;
-
-        if (read_extent_page(
-                page_id,
-                &page) < 0) {
-            return -1;
-        }
-
-        uint64_t next_id =
-            page.next_id;
-
-        for (uint16_t i = 0;
-             i < page.count;
+    if (!(zn.flags & UFS_FLAG_INLINE)) {
+        for (uint32_t i = 0;
+             i < zn.extent_count;
              ++i) {
 
             if (free_physical_region(
-                    page.extents[i].zone_id,
-                    page.extents[i].physical_unit,
-                    page.extents[i].physical_units) < 0) {
+                    zn.extents[i].zone_id,
+                    zn.extents[i].physical_unit,
+                    zn.extents[i].physical_units) < 0) {
                 return -1;
             }
         }
 
-        if (free_extent_page(
-                page_id) < 0) {
-            return -1;
-        }
+        uint64_t page_id =
+            zn.extent_overflow_id;
 
-        page_id = next_id;
+        uint32_t guard = 0;
+
+        while (page_id != 0 &&
+               guard++ <
+                   UFS_MAX_ZONES *
+                   UFS_ZNODE_SLOTS) {
+
+            extent_page_disk_t page;
+
+            if (read_extent_page(
+                    page_id,
+                    &page) < 0) {
+                return -1;
+            }
+
+            uint64_t next_id =
+                page.next_id;
+
+            for (uint16_t i = 0;
+                 i < page.count;
+                 ++i) {
+
+                if (free_physical_region(
+                        page.extents[i].zone_id,
+                        page.extents[i].physical_unit,
+                        page.extents[i].physical_units) < 0) {
+                    return -1;
+                }
+            }
+
+            if (free_extent_page(
+                    page_id) < 0) {
+                return -1;
+            }
+
+            page_id = next_id;
+        }
     }
 
     memset(&zn, 0, sizeof(zn));
@@ -1514,13 +1622,13 @@ static int consume_last_extent_slack(znode_disk_t *zn,
     return zn->size >= needed_size;
 }
 
-static int try_extend_single_extent(znode_disk_t *zn,
-                                    uint64_t needed_size) {
-    if (zn->extent_count != 1)
+static int try_extend_tail_extent(znode_disk_t *zn,
+                                  uint64_t needed_size) {
+    if (zn->extent_count == 0 || zn->extent_count > UFS_EXTENTS)
         return 0;
 
     ufs_extent_disk_t *ex =
-        &zn->extents[0];
+        &zn->extents[zn->extent_count - 1];
 
     uint64_t current_end =
         ex->logical_start +
@@ -1616,8 +1724,7 @@ static int ensure_capacity(uint64_t object_id,
      * 1. Reuse already-allocated but logically unused capacity
      *    in the final extent.
      *
-     * 2. If the file has one extent, try to extend that same
-     *    extent into immediately adjacent free physical units.
+     * 2. Try to extend the tail extent into immediately adjacent free physical units.
      *
      * 3. Otherwise use the fragmentation-aware multi-extent
      *    allocator.
@@ -1628,14 +1735,11 @@ static int ensure_capacity(uint64_t object_id,
         return 0;
     }
 
-    if (zn->extent_count == 1) {
-        if (try_extend_single_extent(
-                zn,
-                needed_size)) {
-
-            zn->size = needed_size;
-            return 0;
-        }
+    if (try_extend_tail_extent(
+            zn,
+            needed_size)) {
+        zn->size = needed_size;
+        return 0;
     }
 
     uint64_t logical =
@@ -2738,6 +2842,45 @@ int ufs_close(int fd) {
     return 0;
 }
 
+static int spill_inline_to_extents(uint64_t object_id, znode_disk_t *zn, uint64_t needed_size) {
+    uint8_t old_data[UFS_MAX_INLINE_BYTES];
+    uint64_t old_size = zn->size;
+    if (old_size > UFS_MAX_INLINE_BYTES) old_size = UFS_MAX_INLINE_BYTES;
+    memcpy(old_data, zn->inline_data, old_size);
+
+    zn->flags &= ~UFS_FLAG_INLINE;
+    zn->extent_count = 0;
+    zn->size = 0;
+    memset(zn->extents, 0, sizeof(zn->extents));
+
+    if (ensure_capacity(object_id, zn, needed_size) < 0) {
+        zn->flags |= UFS_FLAG_INLINE;
+        zn->size = old_size;
+        memcpy(zn->inline_data, old_data, old_size);
+        return -1;
+    }
+
+    if (old_size > 0) {
+        size_t written = 0;
+        while (written < old_size) {
+            ufs_extent_disk_t ex;
+            uint64_t inside;
+            if (mapping_find(zn, written, &ex, &inside) < 0) break;
+            size_t avail = (size_t)(ex.logical_length - inside);
+            size_t chunk = (old_size - written < avail) ? (old_size - written) : avail;
+            uint64_t physical = (uint64_t)ex.physical_unit * UFS_UNIT + inside;
+            if (zone_write_bytes(ex.zone_id,
+                                 (uint32_t)(physical / UFS_UNIT),
+                                 (uint32_t)(physical % UFS_UNIT),
+                                 old_data + written, chunk) < 0) {
+                return -1;
+            }
+            written += chunk;
+        }
+    }
+    return 0;
+}
+
 ssize_t ufs_write(int fd, const void *buf, size_t count) {
     if (!fs_mounted()) return -1;
     if (fd < 0 || fd >= (int)UFS_MAX_OPEN_FILES || !g_fs.fds[fd].used) {
@@ -2766,8 +2909,28 @@ ssize_t ufs_write(int fd, const void *buf, size_t count) {
         return -1;
     }
 
-    if (end > zn.size) {
-        if (ensure_capacity(id, &zn, end) < 0) return -1;
+    if (zn.flags & UFS_FLAG_INLINE) {
+        if (end <= UFS_MAX_INLINE_BYTES) {
+            memcpy(zn.inline_data + g_fs.fds[fd].offset, buf, count);
+            if (end > zn.size) {
+                zn.size = end;
+            }
+            g_fs.fds[fd].offset += count;
+
+            transaction_t tx = {0};
+            if (journal_begin(&tx) < 0) return -1;
+            if (journal_znode(&tx, id, &zn) < 0) return -1;
+            if (journal_commit(&tx) < 0) return -1;
+            if (write_znode(id, &zn) < 0) return -1;
+            if (flush_superblock() < 0) return -1;
+            return (ssize_t)count;
+        } else {
+            if (spill_inline_to_extents(id, &zn, end) < 0) return -1;
+        }
+    } else {
+        if (end > zn.size) {
+            if (ensure_capacity(id, &zn, end) < 0) return -1;
+        }
     }
 
     transaction_t tx = {0};
@@ -2838,9 +3001,155 @@ ssize_t ufs_write(int fd, const void *buf, size_t count) {
 
     for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z)
         if (g_fs.zone_bitmaps[z] && flush_zone_bitmap(z) < 0) return -1;
-
     if (end != old_size && flush_superblock() < 0) return -1;
     return (ssize_t)done;
+}
+
+/* ========================================================================= */
+/* Self-Contained Lightweight Fast LZ4 Engine for AuraFS                      */
+/* ========================================================================= */
+
+#define LZ4_MIN_MATCH 4
+#define LZ4_HASH_LOG  12
+#define LZ4_HASH_SIZE (1 << LZ4_HASH_LOG)
+
+static inline uint32_t lz4_hash(uint32_t val) {
+    return (val * 2654435761u) >> (32 - LZ4_HASH_LOG);
+}
+
+static inline uint32_t lz4_read32(const void *ptr) {
+    uint32_t v;
+    memcpy(&v, ptr, 4);
+    return v;
+}
+
+static int ufs_lz4_compress(const uint8_t *src, int src_len, uint8_t *dst, int dst_capacity) {
+    if (src_len <= 0 || dst_capacity <= 0) return 0;
+    int16_t hash_table[LZ4_HASH_SIZE];
+    memset(hash_table, -1, sizeof(hash_table));
+
+    const uint8_t *ip = src;
+    const uint8_t *const iend = src + src_len;
+    const uint8_t *const mflimit = iend - 5;
+    const uint8_t *anchor = ip;
+
+    uint8_t *op = dst;
+    uint8_t *const oend = dst + dst_capacity;
+
+    if (src_len < 13) goto _last_literals;
+
+    while (ip < mflimit) {
+        uint32_t h = lz4_hash(lz4_read32(ip));
+        int match_pos = hash_table[h];
+        hash_table[h] = (int16_t)(ip - src);
+
+        if (match_pos < 0 || (ip - src) - match_pos > 65535 ||
+            lz4_read32(src + match_pos) != lz4_read32(ip)) {
+            ip++;
+            continue;
+        }
+
+        /* Match found! */
+        const uint8_t *ref = src + match_pos;
+        int lit_len = (int)(ip - anchor);
+        uint8_t *token = op++;
+        if (op + lit_len + 8 > oend) return 0;
+
+        if (lit_len >= 15) {
+            *token = (uint8_t)(15 << 4);
+            int rem = lit_len - 15;
+            while (rem >= 255) { *op++ = 255; rem -= 255; }
+            *op++ = (uint8_t)rem;
+        } else {
+            *token = (uint8_t)(lit_len << 4);
+        }
+        memcpy(op, anchor, lit_len);
+        op += lit_len;
+
+        uint16_t offset = (uint16_t)(ip - ref);
+        *op++ = (uint8_t)(offset & 0xFF);
+        *op++ = (uint8_t)(offset >> 8);
+
+        ip += 4; ref += 4;
+        const uint8_t *match_start = ip;
+        while (ip < iend && *ip == *ref) { ip++; ref++; }
+        int match_len = (int)(ip - match_start);
+
+        if (match_len >= 15) {
+            *token |= 15;
+            int rem = match_len - 15;
+            while (rem >= 255) { *op++ = 255; rem -= 255; }
+            *op++ = (uint8_t)rem;
+        } else {
+            *token |= (uint8_t)match_len;
+        }
+
+        anchor = ip;
+    }
+
+_last_literals:
+    {
+        int last_lit = (int)(iend - anchor);
+        if (op + last_lit + 4 > oend) return 0;
+        if (last_lit >= 15) {
+            *op++ = (uint8_t)(15 << 4);
+            int rem = last_lit - 15;
+            while (rem >= 255) { *op++ = 255; rem -= 255; }
+            *op++ = (uint8_t)rem;
+        } else {
+            *op++ = (uint8_t)(last_lit << 4);
+        }
+        memcpy(op, anchor, last_lit);
+        op += last_lit;
+    }
+
+    return (int)(op - dst);
+}
+
+static int ufs_lz4_decompress(const uint8_t *src, int src_len, uint8_t *dst, int dst_len) {
+    const uint8_t *ip = src;
+    const uint8_t *const iend = src + src_len;
+    uint8_t *op = dst;
+    uint8_t *const oend = dst + dst_len;
+
+    while (ip < iend) {
+        uint8_t token = *ip++;
+        int lit_len = (token >> 4) & 0x0F;
+        if (lit_len == 15) {
+            uint8_t s;
+            do {
+                if (ip >= iend) return -1;
+                s = *ip++;
+                lit_len += s;
+            } while (s == 255);
+        }
+        if (op + lit_len > oend || ip + lit_len > iend) return -1;
+        memcpy(op, ip, lit_len);
+        ip += lit_len;
+        op += lit_len;
+
+        if (ip >= iend) break;
+
+        uint16_t offset = (uint16_t)(ip[0] | (ip[1] << 8));
+        ip += 2;
+        if (offset == 0 || op - offset < dst) return -1;
+
+        int match_len = (token & 0x0F) + 4;
+        if ((token & 0x0F) == 15) {
+            uint8_t s;
+            do {
+                if (ip >= iend) return -1;
+                s = *ip++;
+                match_len += s;
+            } while (s == 255);
+        }
+        if (op + match_len > oend) return -1;
+        const uint8_t *ref = op - offset;
+        for (int i = 0; i < match_len; i++) {
+            *op++ = *ref++;
+        }
+    }
+    return (int)(op - dst);
 }
 
 ssize_t ufs_read(int fd, void *buf, size_t count) {
@@ -2862,6 +3171,12 @@ ssize_t ufs_read(int fd, void *buf, size_t count) {
     size_t want = count;
     if ((uint64_t)g_fs.fds[fd].offset + want > zn.size)
         want = (size_t)(zn.size - (uint64_t)g_fs.fds[fd].offset);
+
+    if (zn.flags & UFS_FLAG_INLINE) {
+        memcpy(buf, zn.inline_data + g_fs.fds[fd].offset, want);
+        g_fs.fds[fd].offset += (off_t)want;
+        return (ssize_t)want;
+    }
 
     size_t done = 0;
     while (done < want) {
@@ -2887,20 +3202,45 @@ ssize_t ufs_read(int fd, void *buf, size_t count) {
                 ? (want - done)
                 : available;
 
-        uint64_t physical =
-            (uint64_t)ex.physical_unit *
-            UFS_UNIT +
-            inside;
+        if (ex.granularity & UFS_FLAG_COMPRESSED_LZ4) {
+            uint32_t phys_bytes = ex.physical_units * UFS_UNIT;
+            uint8_t *cbuf = malloc(phys_bytes);
+            uint8_t *dbuf = malloc((size_t)ex.logical_length);
+            if (!cbuf || !dbuf) {
+                free(cbuf); free(dbuf);
+                errno = ENOMEM;
+                return -1;
+            }
+            if (zone_read_bytes(ex.zone_id, ex.physical_unit, 0, cbuf, phys_bytes) < 0) {
+                free(cbuf); free(dbuf);
+                errno = EIO;
+                return -1;
+            }
+            uint16_t comp_len = (uint16_t)(cbuf[0] | (cbuf[1] << 8));
+            int dec_len = ufs_lz4_decompress(cbuf + 2, comp_len, dbuf, (int)ex.logical_length);
+            if (dec_len < 0) {
+                free(cbuf); free(dbuf);
+                errno = EIO;
+                return -1;
+            }
+            memcpy((unsigned char *)buf + done, dbuf + inside, chunk);
+            free(cbuf); free(dbuf);
+        } else {
+            uint64_t physical =
+                (uint64_t)ex.physical_unit *
+                UFS_UNIT +
+                inside;
 
-        if (zone_read_bytes(
-                ex.zone_id,
-                (uint32_t)(physical / UFS_UNIT),
-                (uint32_t)(physical % UFS_UNIT),
-                (unsigned char *)buf + done,
-                chunk) < 0) {
+            if (zone_read_bytes(
+                    ex.zone_id,
+                    (uint32_t)(physical / UFS_UNIT),
+                    (uint32_t)(physical % UFS_UNIT),
+                    (unsigned char *)buf + done,
+                    chunk) < 0) {
 
-            errno = EIO;
-            return -1;
+                errno = EIO;
+                return -1;
+            }
         }
 
         g_fs.fds[fd].offset += (off_t)chunk;
@@ -2958,11 +3298,23 @@ int ufs_truncate(const char *path, size_t size) {
         return -1;
     }
 
-    if (size > zn.size) {
-        if (ensure_capacity(id, &zn, size) < 0) return -1;
-        zn.size = size;
-    } else if (size < zn.size) {
-        if (free_tail_after(&zn, size) < 0) return -1;
+    if (zn.flags & UFS_FLAG_INLINE) {
+        if (size <= UFS_MAX_INLINE_BYTES) {
+            if (size > zn.size) {
+                memset(zn.inline_data + zn.size, 0, size - zn.size);
+            }
+            zn.size = size;
+        } else {
+            if (spill_inline_to_extents(id, &zn, size) < 0) return -1;
+            zn.size = size;
+        }
+    } else {
+        if (size > zn.size) {
+            if (ensure_capacity(id, &zn, size) < 0) return -1;
+            zn.size = size;
+        } else if (size < zn.size) {
+            if (free_tail_after(&zn, size) < 0) return -1;
+        }
     }
 
     transaction_t tx = {0};
@@ -3179,5 +3531,352 @@ int ufs_stat(const char *path, struct ufs_stat *st) {
 
     st->type = zn.type;
     st->size = (size_t)zn.size;
+    if (zn.flags & UFS_FLAG_INLINE) {
+        st->physical_size = 0;
+    } else {
+        uint64_t total_units = 0;
+        for (size_t i = 0; i < zn.extent_count && i < UFS_EXTENTS; ++i) {
+            total_units += zn.extents[i].physical_units;
+        }
+        uint64_t page_id = zn.extent_overflow_id;
+        uint32_t guard = 0;
+        while (page_id != 0 && guard++ < UFS_MAX_ZONES * UFS_ZNODE_SLOTS) {
+            extent_page_disk_t page;
+            if (read_extent_page(page_id, &page) < 0) break;
+            for (uint16_t i = 0; i < page.count; ++i) {
+                total_units += page.extents[i].physical_units;
+            }
+            page_id = page.next_id;
+        }
+        st->physical_size = (size_t)(total_units * UFS_UNIT);
+    }
     return 0;
+}
+
+int ufs_inspect(const char *path, int *is_inline, uint16_t *extent_count,
+                struct ufs_extent_info *extents, size_t max_extents) {
+    if (!fs_mounted()) return -1;
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+
+    if (is_inline) *is_inline = (zn.flags & UFS_FLAG_INLINE) ? 1 : 0;
+    if (extent_count) *extent_count = zn.extent_count;
+
+    if (extents && max_extents > 0) {
+        size_t written = 0;
+        if (!(zn.flags & UFS_FLAG_INLINE)) {
+            for (size_t i = 0; i < zn.extent_count && i < UFS_EXTENTS && written < max_extents; ++i) {
+                extents[written].zone_id = zn.extents[i].zone_id;
+                extents[written].granularity = zn.extents[i].granularity;
+                extents[written].physical_unit = zn.extents[i].physical_unit;
+                extents[written].physical_units = zn.extents[i].physical_units;
+                extents[written].logical_start = zn.extents[i].logical_start;
+                extents[written].logical_length = zn.extents[i].logical_length;
+                written++;
+            }
+            uint64_t page_id = zn.extent_overflow_id;
+            uint32_t guard = 0;
+            while (page_id != 0 && guard++ < UFS_MAX_ZONES * UFS_ZNODE_SLOTS && written < max_extents) {
+                extent_page_disk_t page;
+                if (read_extent_page(page_id, &page) < 0) break;
+                for (uint16_t i = 0; i < page.count && written < max_extents; ++i) {
+                    extents[written].zone_id = page.extents[i].zone_id;
+                    extents[written].granularity = page.extents[i].granularity;
+                    extents[written].physical_unit = page.extents[i].physical_unit;
+                    extents[written].physical_units = page.extents[i].physical_units;
+                    extents[written].logical_start = page.extents[i].logical_start;
+                    extents[written].logical_length = page.extents[i].logical_length;
+                    written++;
+                }
+                page_id = page.next_id;
+            }
+        }
+    }
+    return 0;
+}
+
+int ufs_setxattr(const char *path, const char *name, const void *value, size_t size) {
+    if (!fs_mounted()) return -1;
+    if (!path || !name || !value || size == 0 || size > UFS_MAX_XATTR_VAL) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (strlen(name) >= UFS_MAX_XATTR_KEY) {
+        errno = ERANGE;
+        return -1;
+    }
+
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+
+    ufs_xattr_page_disk_t xpage;
+    memset(&xpage, 0, sizeof(xpage));
+
+    uint64_t xattr_id = zn.xattr_page_id;
+    if (xattr_id == 0) {
+        uint16_t z;
+        uint32_t u, count;
+        if (allocate_physical_region(object_zone(id), UFS_UNIT, UFS_SMALL_GRAN, &z, &u, &count) < 0) {
+            return -1;
+        }
+        xattr_id = make_object_id(z, u);
+        xpage.magic = UFS_XATTR_PAGE_MAGIC;
+        xpage.version = UFS_VERSION;
+        xpage.count = 0;
+        zn.xattr_page_id = xattr_id;
+    } else {
+        if (read_xattr_page(xattr_id, &xpage) < 0) return -1;
+    }
+
+    /* Check if key already exists */
+    int slot = -1;
+    for (size_t i = 0; i < UFS_XATTRS_PER_PAGE; ++i) {
+        if (xpage.entries[i].active && strcmp(xpage.entries[i].name, name) == 0) {
+            slot = (int)i;
+            break;
+        }
+    }
+
+    /* If not found, find free slot */
+    if (slot < 0) {
+        for (size_t i = 0; i < UFS_XATTRS_PER_PAGE; ++i) {
+            if (!xpage.entries[i].active) {
+                slot = (int)i;
+                break;
+            }
+        }
+    }
+
+    if (slot < 0) {
+        errno = ENOSPC;
+        return -1;
+    }
+
+    if (!xpage.entries[slot].active) {
+        xpage.count++;
+    }
+
+    memset(&xpage.entries[slot], 0, sizeof(xpage.entries[slot]));
+    strncpy(xpage.entries[slot].name, name, UFS_MAX_XATTR_KEY - 1);
+    memcpy(xpage.entries[slot].value, value, size);
+    xpage.entries[slot].value_len = (uint16_t)size;
+    xpage.entries[slot].active = 1;
+
+    if (write_xattr_page(xattr_id, &xpage) < 0) return -1;
+    if (write_znode(id, &zn) < 0) return -1;
+
+    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z)
+        if (g_fs.zone_bitmaps[z] && flush_zone_bitmap(z) < 0) return -1;
+
+    return flush_superblock();
+}
+
+int ufs_getxattr(const char *path, const char *name, void *value, size_t size) {
+    if (!fs_mounted()) return -1;
+    if (!path || !name) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    if (zn.xattr_page_id == 0) {
+        errno = ENODATA;
+        return -1;
+    }
+
+    ufs_xattr_page_disk_t xpage;
+    if (read_xattr_page(zn.xattr_page_id, &xpage) < 0) return -1;
+
+    for (size_t i = 0; i < UFS_XATTRS_PER_PAGE; ++i) {
+        if (xpage.entries[i].active && strcmp(xpage.entries[i].name, name) == 0) {
+            if (!value || size == 0) {
+                return (int)xpage.entries[i].value_len;
+            }
+            if (size < xpage.entries[i].value_len) {
+                errno = ERANGE;
+                return -1;
+            }
+            memcpy(value, xpage.entries[i].value, xpage.entries[i].value_len);
+            return (int)xpage.entries[i].value_len;
+        }
+    }
+
+    errno = ENODATA;
+    return -1;
+}
+
+int ufs_listxattr(const char *path, char *list, size_t size) {
+    if (!fs_mounted()) return -1;
+    if (!path) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    if (zn.xattr_page_id == 0) return 0;
+
+    ufs_xattr_page_disk_t xpage;
+    if (read_xattr_page(zn.xattr_page_id, &xpage) < 0) return -1;
+
+    size_t written = 0;
+    for (size_t i = 0; i < UFS_XATTRS_PER_PAGE; ++i) {
+        if (xpage.entries[i].active) {
+            size_t klen = strlen(xpage.entries[i].name) + 1;
+            if (list && size > 0) {
+                if (written + klen <= size) {
+                    memcpy(list + written, xpage.entries[i].name, klen);
+                } else {
+                    errno = ERANGE;
+                    return -1;
+                }
+            }
+            written += klen;
+        }
+    }
+    return (int)written;
+}
+
+int ufs_removexattr(const char *path, const char *name) {
+    if (!fs_mounted()) return -1;
+    if (!path || !name) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    if (zn.xattr_page_id == 0) {
+        errno = ENODATA;
+        return -1;
+    }
+
+    ufs_xattr_page_disk_t xpage;
+    if (read_xattr_page(zn.xattr_page_id, &xpage) < 0) return -1;
+
+    for (size_t i = 0; i < UFS_XATTRS_PER_PAGE; ++i) {
+        if (xpage.entries[i].active && strcmp(xpage.entries[i].name, name) == 0) {
+            xpage.entries[i].active = 0;
+            if (xpage.count > 0) xpage.count--;
+            return write_xattr_page(zn.xattr_page_id, &xpage);
+        }
+    }
+
+    errno = ENODATA;
+    return -1;
+}
+
+int ufs_compress_file(const char *path) {
+    if (!fs_mounted()) return -1;
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    if (zn.type != UFS_TYPE_FILE || zn.size == 0) return 0;
+    if (zn.flags & UFS_FLAG_INLINE) {
+        /* Already Tier-0 inline (0 physical blocks used) */
+        return 0;
+    }
+
+    /* Read all uncompressed data */
+    uint8_t *orig = malloc(zn.size);
+    if (!orig) { errno = ENOMEM; return -1; }
+
+    int fd = ufs_open(path, UFS_O_RDONLY);
+    if (fd < 0) { free(orig); return -1; }
+    ssize_t rd = ufs_read(fd, orig, zn.size);
+    ufs_close(fd);
+    if (rd != (ssize_t)zn.size) { free(orig); errno = EIO; return -1; }
+
+    /* Compress data using LZ4 */
+    int max_comp = (int)zn.size + 64;
+    uint8_t *comp = malloc(max_comp);
+    if (!comp) { free(orig); errno = ENOMEM; return -1; }
+
+    int comp_len = ufs_lz4_compress(orig, (int)zn.size, comp, max_comp);
+    if (comp_len <= 0 || comp_len + 2 >= (int)zn.size) {
+        /* Incompressible or compression did not save space: keep uncompressed */
+        free(orig); free(comp);
+        return 0;
+    }
+
+    uint32_t needed_bytes = (uint32_t)(comp_len + 2);
+    uint32_t needed_units = (needed_bytes + UFS_UNIT - 1) / UFS_UNIT;
+
+    /* Check if we save at least 1 unit */
+    uint32_t old_units = 0;
+    for (uint16_t i = 0; i < zn.extent_count && i < UFS_EXTENTS; i++) {
+        old_units += zn.extents[i].physical_units;
+    }
+    if (needed_units >= old_units) {
+        free(orig); free(comp);
+        return 0;
+    }
+
+    /* Free old extents */
+    for (uint16_t i = 0; i < zn.extent_count && i < UFS_EXTENTS; i++) {
+        free_physical_region(zn.extents[i].zone_id, zn.extents[i].physical_unit, zn.extents[i].physical_units);
+    }
+    zn.extent_count = 0;
+    memset(zn.extents, 0, sizeof(zn.extents));
+
+    /* Allocate new compressed units */
+    uint16_t z;
+    uint32_t u, count;
+    if (allocate_physical_region(object_zone(id), needed_units * UFS_UNIT, UFS_SMALL_GRAN, &z, &u, &count) < 0) {
+        free(orig); free(comp);
+        return -1;
+    }
+
+    /* Write compressed data with 2-byte length header */
+    uint8_t *payload = calloc(needed_units * UFS_UNIT, 1);
+    if (!payload) { free(orig); free(comp); errno = ENOMEM; return -1; }
+    payload[0] = (uint8_t)(comp_len & 0xFF);
+    payload[1] = (uint8_t)(comp_len >> 8);
+    memcpy(payload + 2, comp, comp_len);
+
+    if (zone_write_bytes(z, u, 0, payload, needed_units * UFS_UNIT) < 0) {
+        free(orig); free(comp); free(payload);
+        return -1;
+    }
+    free(payload);
+
+    /* Update single compressed extent */
+    zn.extents[0].logical_start = 0;
+    zn.extents[0].logical_length = zn.size;
+    zn.extents[0].zone_id = z;
+    zn.extents[0].granularity = UFS_FLAG_COMPRESSED_LZ4;
+    zn.extents[0].physical_unit = u;
+    zn.extents[0].physical_units = needed_units;
+    zn.extent_count = 1;
+
+    free(orig); free(comp);
+
+    transaction_t tx = {0};
+    if (journal_begin(&tx) < 0) return -1;
+    if (journal_znode(&tx, id, &zn) < 0) return -1;
+    if (journal_commit(&tx) < 0) return -1;
+
+    if (write_znode(id, &zn) < 0) return -1;
+    for (uint32_t zi = 0; zi < g_fs.sb.zone_count; ++zi)
+        if (g_fs.zone_bitmaps[zi] && flush_zone_bitmap(zi) < 0) return -1;
+
+    return flush_superblock();
 }

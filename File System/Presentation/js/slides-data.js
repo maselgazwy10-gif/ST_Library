@@ -331,8 +331,8 @@ const SLIDES_DATA = [
     "zone": "hotland",
     "zoneName": "Zone 03: Hotland",
     "title": "Our Allocation Principle",
-    "subtitle": "Contiguous When Possible + Fragmented When Necessary",
-    "content": "\n  <div class=\"undertale-box text-center\">\n    <div class=\"box-header\"><span class=\"pixel-star-large\">★</span> DUAL ALLOCATION OBJECTIVE</div>\n    <div class=\"hl-yellow text-lg py-2\">\n      CONTIGUOUS WHEN POSSIBLE &nbsp;+&nbsp; FRAGMENTED WHEN NECESSARY\n    </div>\n  </div>\n  <div class=\"undertale-box mt-2\">\n    <div class=\"box-header hl-yellow\">C ZONE ALLOCATION FUNCTIONS (<code>UserFS.c</code>)</div>\n    <pre class=\"ascii-block text-xs\">\n/* 1. Contiguous-First: Scans for a single run matching need_units in preferred zone */\nstatic int choose_zone_for_allocation(uint32_t need_units, uint32_t preferred_zone);\n\n/* 2. Fallback: If no single run fits, grabs the largest available run to minimize fragmentation */\nstatic int choose_zone_for_partial_allocation(uint32_t preferred_zone, uint32_t *out_zone, uint32_t *out_largest_run);\n    </pre>\n    <p class=\"text-xs text-muted mt-1\">\n      * <code>preferred_zone</code>: Home zone for locality | <code>need_units</code>: Requested physical 512B blocks.\n    </p>\n  </div>\n"
+    "subtitle": "Contiguous-First Fallback + Immediate Allocation",
+    "content": "\n  <div class=\"undertale-box text-center\">\n    <div class=\"box-header\"><span class=\"pixel-star-large\">★</span> DUAL ALLOCATION OBJECTIVE</div>\n    <div class=\"hl-yellow text-lg py-1\">\n      CONTIGUOUS WHEN POSSIBLE &nbsp;+&nbsp; FRAGMENTED WHEN NECESSARY\n    </div>\n  </div>\n  <div class=\"undertale-grid-2 mt-2\">\n    <div class=\"battle-card green-theme\">\n      <div class=\"card-title hl-green\">⚡ WHY IMMEDIATE ALLOCATION?</div>\n      <ul class=\"pixel-list text-xs\">\n        <li><strong>1. Embedded-Ready:</strong> Tiny RAM footprint (&lt; 64 KB) with no multi-megabyte kernel page cache required.</li>\n        <li><strong>2. Deterministic Latency:</strong> Synchronous allocation avoids random background flush stalls in real-time systems.</li>\n        <li><strong>3. Instant ENOSPC & Durability:</strong> Out-of-space is caught immediately during write; data is journal-safe on power cuts.</li>\n      </ul>\n    </div>\n    <div class=\"battle-card cyan-theme\">\n      <div class=\"card-title hl-cyan\">C ZONE ALLOCATION FUNCTIONS</div>\n      <pre class=\"ascii-block text-xs\">\n/* 1. Contiguous-First in home zone */\nchoose_zone_for_allocation(...);\n\n/* 2. Fallback to largest free runs */\nchoose_zone_for_partial_allocation(...);\n      </pre>\n      <p class=\"text-xs text-muted mt-1\">\n        * Immediate synchronous bitmap updates + home zone locality guarantee.\n      </p>\n    </div>\n  </div>\n"
   },
   {
     "id": 36,
@@ -439,46 +439,64 @@ const SLIDES_DATA = [
     "chapter": "Chapter 4: Allocation & Granularity",
     "zone": "core",
     "zoneName": "Zone 04: The Core",
-    "title": "Removing the Artificial Extent Limit",
-    "subtitle": "Chained Overflow Extent Pages",
-    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"undertale-box\">\n      <div class=\"box-header\">OVERFLOW EXTENT CHAIN</div>\n      <div class=\"ascii-block text-xs\">\nZ-Node\n├── 16 Inline Extents (Fast path)\n└── Overflow Extent Pages (Linked list)\n      ├── Page 1 (17 Extents)\n      └── Page 2 (17 Extents) ➔ NULL\n      </div>\n      <p class=\"text-xs text-muted mt-1\">Eliminates the 256 KiB fixed ceiling.</p>\n    </div>\n    <div class=\"undertale-box\">\n      <div class=\"box-header hl-cyan\">C OVERFLOW STRUCT (<code>UserFS.c</code>)</div>\n      <pre class=\"ascii-block text-xs\">\n#define UFS_EXTENTS_PER_PAGE ((512u - 16u) / sizeof(ufs_extent_disk_t))\n\ntypedef struct __attribute__((packed)) {\n    uint32_t magic;      /* UFS_EXTENT_PAGE_MAGIC (0x45585047) */\n    uint16_t version;\n    uint16_t count;      /* Active extents on page (<= 17) */\n    uint64_t next_id;    /* Next chained overflow page */\n    ufs_extent_disk_t extents[UFS_EXTENTS_PER_PAGE];\n} extent_page_disk_t;\n      </pre>\n      <p class=\"text-xs text-muted mt-1\">\n        * Chained 512B overflow pages allowing arbitrary multi-gigabyte files.\n      </p>\n    </div>\n  </div>\n"
+    "title": "Act 2: Extent Coalescing & Tail Growth",
+    "subtitle": "Eliminating Extent Bloat During Sequential Appends",
+    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"undertale-box\">\n      <div class=\"box-header hl-red\">WITHOUT COALESCING ❌</div>\n      <div class=\"ascii-block text-xs\">\nWrite 1 (512B) ➔ Extent 0 [Unit 100]\nWrite 2 (512B) ➔ Extent 1 [Unit 101]\nWrite 3 (512B) ➔ Extent 2 [Unit 102]\n➔ Consumes 16 extents in seconds!\n      </div>\n    </div>\n    <div class=\"undertale-box\">\n      <div class=\"box-header hl-green\">AURAFS COALESCING ✔</div>\n      <div class=\"ascii-block text-xs\">\nWrite 1 ➔ Extent 0 [Unit 100, 1 unit]\nWrite 2 ➔ Merged into Extent 0 (2 units)\nWrite 3 ➔ Merged into Extent 0 (3 units)\n➔ 1 single continuous extent!\n      </div>\n    </div>\n  </div>\n  <div class=\"undertale-box mt-2\">\n    <div class=\"box-header hl-yellow\">C IN-LINE MERGE CHECK (<code>UserFS.c</code>)</div>\n    <pre class=\"ascii-block text-xs\">\nif (prev->zone_id == zone && (prev->physical_unit + prev->physical_units) == unit) {\n    prev->physical_units += units;\n    prev->logical_length += logical_length;\n    return 0; /* Merged in-place without new descriptor */\n}\n    </pre>\n  </div>\n"
   },
   {
     "id": 48,
     "chapter": "Chapter 4: Allocation & Granularity",
     "zone": "core",
     "zoneName": "Zone 04: The Core",
-    "title": "Advantages of Our Allocation Design",
-    "subtitle": "Six Major Architectural Strengths",
-    "content": "\n      <div class=\"grid-3-col\">\n        <div class=\"feature-card cyan-border\">\n          <div class=\"feature-title hl-cyan\">1. Contiguous-First</div>\n          <p class=\"feature-desc\">Better locality, fewer extents, peak sequential throughput.</p>\n        </div>\n        <div class=\"feature-card yellow-border\">\n          <div class=\"feature-title hl-yellow\">2. Fallback Handling</div>\n          <p class=\"feature-desc\">Allocations succeed even under heavy disk fragmentation.</p>\n        </div>\n        <div class=\"feature-card green-border\">\n          <div class=\"feature-title hl-green\">3. Multi-Granularity</div>\n          <p class=\"feature-desc\">Drastically cuts internal fragmentation waste.</p>\n        </div>\n        <div class=\"feature-card orange-border\">\n          <div class=\"feature-title hl-orange\">4. Slack Reuse</div>\n          <p class=\"feature-desc\">Consumes existing extent padding without new disk writes.</p>\n        </div>\n        <div class=\"feature-card purple-border\">\n          <div class=\"feature-title hl-purple\">5. Same-Extent Growth</div>\n          <p class=\"feature-desc\">Maintains contiguity during adjacent file expansion.</p>\n        </div>\n        <div class=\"feature-card red-border\">\n          <div class=\"feature-title hl-red\">6. Overflow Pages</div>\n          <p class=\"feature-desc\">Removes artificial file-size ceilings completely.</p>\n        </div>\n      </div>\n    "
+    "title": "Act 3: Tier 0 — Inline Z-Node Data",
+    "subtitle": "Zero-Block Storage for Small Files (&le; 384 Bytes)",
+    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"battle-card green-theme\">\n      <div class=\"card-title hl-green\">★ TIER 0: INLINE STORAGE</div>\n      <div class=\"ascii-block text-xs\">\nZ-Node (512 Bytes):\n┌────────────────────────────┐\n│ Header: flags = INLINE     │\n├────────────────────────────┤\n│ INLINE DATA PAYLOAD        │\n│ (Up to 384 Bytes in Z-Node)│\n└────────────────────────────┘\n      </div>\n      <ul class=\"pixel-list text-xs mt-1\">\n        <li><strong>0 Blocks Allocated:</strong> 0% internal slack!</li>\n        <li><strong>0 Seeks:</strong> 1 read fetches metadata + data.</li>\n      </ul>\n    </div>\n    <div class=\"battle-card cyan-theme\">\n      <div class=\"card-title hl-cyan\">SEAMLESS SPILL-OVER</div>\n      <div class=\"ascii-block text-xs\">\nFile grows past 384 B?\n         │\n         ▼\n1. Allocate 4 KiB extent\n2. Copy inline data to extent\n3. Clear INLINE flag & append\n      </div>\n      <p class=\"text-xs text-muted mt-1\">Smoothly scales from embedded bytes to massive multi-extent files.</p>\n    </div>\n  </div>\n"
   },
   {
     "id": 49,
     "chapter": "Chapter 4: Allocation & Granularity",
     "zone": "core",
     "zoneName": "Zone 04: The Core",
-    "title": "Limitations of the Allocation Design",
-    "subtitle": "Acknowledging Real-World Engineering Trade-Offs",
-    "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"battle-card orange-theme\">\n          <div class=\"card-title\">ALLOCATION OVERHEADS</div>\n          <ul class=\"pixel-list text-xs\">\n            <li><strong>Internal Fragmentation:</strong> Minor slack remains inside coarse 16K extents.</li>\n            <li><strong>Many Extents:</strong> Highly fragmented files require more extent traversals.</li>\n            <li><strong>Granularity Logic:</strong> Multi-tier sizing is more complex than fixed blocks.</li>\n          </ul>\n        </div>\n        <div class=\"battle-card red-theme\">\n          <div class=\"card-title\">SYSTEM COMPLEXITIES</div>\n          <ul class=\"pixel-list text-xs\">\n            <li><strong>Large Runs:</strong> Contiguous 16K runs get harder to find on aged disks.</li>\n            <li><strong>Overflow Metadata:</strong> Extents beyond 16 require separate disk pages.</li>\n            <li><strong>Crash Consistency:</strong> Overflow extent pages must be carefully journaled.</li>\n          </ul>\n        </div>\n      </div>\n    "
+    "title": "Act 3: Extended Attributes (xattrs) & MIME Indexing",
+    "subtitle": "Extension-Free Content Classification in the Z-Node",
+    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"battle-card green-theme\">\n      <div class=\"card-title hl-green\">★ ZERO-PAYLOAD FAST SNIFFING</div>\n      <div class=\"ascii-block text-xs\">\nZ-Node (512 Bytes):\n├── Header + Extents\n└── xattr: user.mime_type = \"application/json\"\n      </div>\n      <ul class=\"pixel-list text-xs mt-1\">\n        <li><strong>0ms Type Discovery:</strong> Instant identification without reading a whole 10 MB payload from disk.</li>\n        <li><strong>Zero I/O Waste:</strong> Web servers and file managers read metadata only.</li>\n      </ul>\n    </div>\n    <div class=\"battle-card yellow-theme\">\n      <div class=\"card-title hl-yellow\">⚡ EXTENSION-FREE FREEDOM</div>\n      <div class=\"ascii-block text-xs\">\nFile: /telemetry_data (No .json extension!)\n└── Z-Node Tag: user.mime_type = application/json\n      </div>\n      <ul class=\"pixel-list text-xs mt-1\">\n        <li><strong>Like Linux ext4 / XFS:</strong> Users are free from stating file extensions when creating files/folders.</li>\n        <li><strong>Arbitrary Key-Value Tags:</strong> Stores sensor IDs, firmware versions, and custom metadata.</li>\n      </ul>\n    </div>\n  </div>\n"
   },
   {
     "id": 50,
     "chapter": "Chapter 4: Allocation & Granularity",
     "zone": "core",
     "zoneName": "Zone 04: The Core",
-    "title": "Complete Allocation Workflow",
-    "subtitle": "The Master End-to-End Decision Pipeline",
-    "quote": "Our allocation strategy keeps files contiguous whenever possible, tolerates fragmentation when necessary, uses different physical granularities to reduce internal fragmentation, and uses extents to preserve a single logical file.",
-    "content": "\n      <div class=\"undertale-box\">\n        <div class=\"box-header\">END-TO-END FLOWCHART</div>\n        <div class=\"ascii-block text-xs\">\n                    FILE REQUEST\n                         │\n                         ▼\n                 Determine size\n                         │\n                         ▼\n                Choose granularity (512 B / 4 KiB / 16 KiB)\n                         │\n                         ▼\n              Try contiguous allocation\n                    /                              YES             NO\n                   │               │\n                   ▼               ▼\n              One extent     Multiple extents\n                   │               │\n                   └───────┬───────┘\n                           ▼\n                         Z-Node\n                           │\n                 ┌─────────┴─────────┐\n                 ▼                   ▼\n           Existing slack       Need new space\n                 │                   │\n                 ▼                   ▼\n            Reuse slack       Extend extent or\n                              add new extent\n        </div>\n      </div>\n  "
+    "title": "Act 3: Transparent Per-Extent Compression (LZ4)",
+    "subtitle": "Sub-Block Level Flash Density & Hardware Lifespan",
+    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"battle-card green-theme\">\n      <div class=\"card-title hl-green\">★ 3 CORE BENEFITS FOR AURAFS</div>\n      <ul class=\"pixel-list text-xs\">\n        <li><strong>1. 2x–3x Storage Density:</strong> Compresses 4 KiB text/telemetry logs down to 512B–1024B (87.5% space saved).</li>\n        <li><strong>2. 60% Less Flash Wear:</strong> Writing fewer 512B units directly doubles flash chip hardware lifespan!</li>\n        <li><strong>3. Faster Read Speeds:</strong> Reading small chunks over slow SPI/SDIO buses and decompressing in RAM is faster than raw disk I/O.</li>\n      </ul>\n    </div>\n    <div class=\"battle-card cyan-theme\">\n      <div class=\"card-title hl-cyan\">⚡ WHY NOT .ZIP OR TAR.GZ?</div>\n      <div class=\"ascii-block text-xs\">\nExtent (4KB Logical ➔ 1KB Physical):\n├── Random Seek & Read in 2 microseconds\n└── Zero 50MB archive unzipping into RAM!\n      </div>\n      <p class=\"text-xs text-muted mt-1\">\n        * <strong>AuraFS Fit:</strong> Extent natively separates <code>logical_length</code> from <code>physical_units</code> via <code>UFS_FLAG_COMPRESSED_LZ4</code>.\n      </p>\n    </div>\n  </div>\n"
+  },
+  {
+    "id": 51,
+    "chapter": "Chapter 4: Allocation & Granularity",
+    "zone": "core",
+    "zoneName": "Zone 04: The Core",
+    "title": "Act 3: Hardware & Flash Optimizations",
+    "subtitle": "64-Bit Bitwise Acceleration & Wear-Leveling Cursors",
+    "content": "\n  <div class=\"undertale-grid-2\">\n    <div class=\"battle-card yellow-theme\">\n      <div class=\"card-title hl-yellow\">⚡ 64-BIT WORD BITWISE SCANNER</div>\n      <div class=\"ascii-block text-xs\">\nCast bitmap to uint64_t words:\n- Check 64 units (32 KiB) in 1 instruction!\n- __builtin_ctzll(~word) finds bit in 1 cycle.\n➔ 64x to 512x faster allocation discovery.\n      </div>\n    </div>\n    <div class=\"battle-card orange-theme\">\n      <div class=\"card-title hl-orange\">🔄 ROVING WEAR-LEVELING CURSOR</div>\n      <div class=\"ascii-block text-xs\">\nZone Next-Fit Pointer:\n- Resumes scan from last allocated unit.\n- Circular wrap-around across zone.\n➔ Distributes write cycles evenly across Flash.\n      </div>\n    </div>\n  </div>\n  <div class=\"undertale-box mt-2 text-center text-xs\">\n    <span class=\"hl-green\">Engineered specifically for embedded microcontrollers (STM32) and high-speed flash storage.</span>\n  </div>\n"
+  },
+  {
+    "id": 52,
+    "chapter": "Chapter 4: Allocation & Granularity",
+    "zone": "core",
+    "zoneName": "Zone 04: The Core",
+    "title": "The Master 3-Act Allocation Workflow",
+    "subtitle": "End-to-End Decision & Growth Flowchart",
+    "quote": "Our allocation engine uses Tier-0 inline storage for tiny files, 3 multi-granularity tiers for larger files, and reuses slack & coalesces extents for zero-overhead growth.",
+    "content": "\n      <div class=\"undertale-box\">\n        <div class=\"box-header\"><span class=\"pixel-star-large\">★</span> MASTER DECISION PIPELINE</div>\n        <div class=\"ascii-block text-xs\">\n                             INCOMING FILE WRITE\n                                      │\n                    ┌─────────────────┴─────────────────┐\n                    ▼                                   ▼\n          File Size &le; 384 B                    File Size &gt; 384 B\n         [TIER 0: INLINE Z-NODE]                [SELECT MULTI-GRAN TIER]\n         (0 Physical Blocks)                    (512 B / 4 KiB / 16 KiB)\n                                                        │\n                                                        ▼\n                                            Can we reuse extent slack?\n                                                   /          \\\n                                                 YES           NO\n                                                  │             │\n                                                  ▼             ▼\n                                             Expand length  Can tail extend?\n                                                             /         \\\n                                                           YES          NO\n                                                            │            │\n                                                            ▼            ▼\n                                                        Extend+Coalesce New Extent\n        </div>\n      </div>\n  "
   },
   {
     "chapter": "Comparison: Allocation & Granularity",
     "zone": "blizzard",
     "zoneName": "Frostfire: FAT32 vs AuraFS",
     "title": "FAT32 vs. AuraFS: Allocation & Granularity",
-    "subtitle": "Fixed Coarse Clusters vs. Dynamic Multi-Tier Extents",
-    "content": "\n    <div class=\"undertale-grid-2\">\n      <div class=\"battle-card cyan-theme\">\n        <div class=\"card-title hl-cyan\">❄️ FAT32 ALLOCATION</div>\n        <div class=\"ascii-block text-xs\">\n100-byte file on 32 KiB cluster:\n┌──────────┬────────────────────────┐\n│ 100 B    │ 32,668 B Wasted (99.7%)│\n└──────────┴────────────────────────┘\n        </div>\n        <ul class=\"pixel-list text-xs mt-2\">\n          <li><strong class=\"hl-red\">Rigid Fixed Cluster:</strong> Selected at format time (e.g. 4KB, 8KB, 32KB).</li>\n          <li><strong class=\"hl-red\">Severe Slack Waste:</strong> Thousands of small files waste gigabytes of drive storage.</li>\n          <li><strong class=\"hl-red\">No Slack Reuse:</strong> File expansion always allocates additional full clusters.</li>\n        </ul>\n      </div>\n      <div class=\"battle-card orange-theme\">\n        <div class=\"card-title hl-orange\">🔥 AURAFS ALLOCATION</div>\n        <div class=\"ascii-block text-xs\">\n100-byte file on 512 B unit:\n┌──────────┬────────────────────────┐\n│ 100 B    │ 412 B Slack            │\n└──────────┴────────────────────────┘\n        </div>\n        <ul class=\"pixel-list text-xs mt-2\">\n          <li><strong class=\"hl-green\">Multi-Tier Granularity:</strong> 512 B (Small), 4 KiB (Medium), 16 KiB (Large).</li>\n          <li><strong class=\"hl-green\">Lifetime Promotion:</strong> Files grow seamlessly from 512B to 16KB units.</li>\n          <li><strong class=\"hl-green\">Slack Reuse:</strong> File growth consumes existing extent padding without disk I/O.</li>\n        </ul>\n      </div>\n    </div>\n  ",
-    "id": 51
+    "subtitle": "Rigid Coarse Clusters vs. 4-Tier Zero-Overhead Engine",
+    "content": "\n    <div class=\"undertale-grid-2\">\n      <div class=\"battle-card cyan-theme\">\n        <div class=\"card-title hl-cyan\">❄️ FAT32 ALLOCATION</div>\n        <div class=\"ascii-block text-xs\">\n100-byte file on 32 KiB cluster:\n┌──────────┬────────────────────────┐\n│ 100 B    │ 32,668 B Wasted (99.7%)│\n└──────────┴────────────────────────┘\n        </div>\n        <ul class=\"pixel-list text-xs mt-2\">\n          <li><strong class=\"hl-red\">Rigid Fixed Cluster:</strong> Selected at format time (e.g. 4KB, 8KB, 32KB).</li>\n          <li><strong class=\"hl-red\">Severe Slack Waste:</strong> Thousands of small files waste gigabytes of drive storage.</li>\n          <li><strong class=\"hl-red\">No Slack Reuse:</strong> File expansion always allocates additional full clusters.</li>\n        </ul>\n      </div>\n      <div class=\"battle-card orange-theme\">\n        <div class=\"card-title hl-orange\">🔥 ENHANCED AURAFS ALLOCATION</div>\n        <div class=\"ascii-block text-xs\">\n100-byte file: 0 B allocated (Tier-0 Inline)\n5 KiB file: 4 KiB extent + coalesced appends\n        </div>\n        <ul class=\"pixel-list text-xs mt-2\">\n          <li><strong class=\"hl-green\">4 Dynamic Tiers:</strong> Inline (&le;384B), 512B, 4KiB, and 16KiB units.</li>\n          <li><strong class=\"hl-green\">Zero Slack for Small Files:</strong> Embedded inside 512B Z-Node.</li>\n          <li><strong class=\"hl-green\">In-Place Coalescing:</strong> Merges adjacent extents automatically.</li>\n          <li><strong class=\"hl-green\">Flash Wear-Aware:</strong> Next-Fit roving cursor protects flash lifespan.</li>\n        </ul>\n      </div>\n    </div>\n  ",
+    "id": 53
   },
   {
     "chapter": "Chapter 5: Directory & Consistency",
@@ -488,7 +506,7 @@ const SLIDES_DATA = [
     "subtitle": "A Directory is Not a Magical Container",
     "quote": "A directory is not a magical container. Under the hood, it is a file with a special type and a simple on-disk structure.",
     "content": "\n      <div class=\"grid-2x2 mb-2\">\n        <div class=\"pill-badge hl-cyan\">DIRECTORY = FILE</div>\n        <div class=\"pill-badge hl-yellow\">64-BYTE SLOTS</div>\n        <div class=\"pill-badge hl-green\">Z-NODE POINTER</div>\n        <div class=\"pill-badge hl-purple\">HOT DIRECTORY CACHE</div>\n      </div>\n      <div class=\"undertale-box\">\n        <div class=\"box-header hl-cyan\">ON-DISK RECORD: <code>dir_disk_t</code> (64 BYTES)</div>\n        <pre class=\"ascii-block text-xs\">\ntypedef struct __attribute__((packed)) {\n    char name[UFS_MAX_NAME + 1]; /* 32 bytes: File or folder name */\n    uint8_t type;                /* UFS_TYPE_FILE (1) or UFS_TYPE_DIR (2) */\n    uint8_t active;              /* 1 = active entry, 0 = free slot */\n    uint16_t reserved;\n    uint64_t object_id;          /* Target Z-Node ID: (zone_id, local_id) */\n    uint32_t generation;         /* Generational tag to prevent stale links */\n} dir_disk_t;                    /* Exactly 64 bytes on disk */\n        </pre>\n        <p class=\"text-xs text-muted mt-1\">\n          * Stored as fixed-size 64-byte records in directory data blocks. 8 entries fit in one 512B block.\n        </p>\n      </div>\n    ",
-    "id": 52
+    "id": 54
   },
   {
     "chapter": "Chapter 5: Directory & Consistency",
@@ -497,7 +515,7 @@ const SLIDES_DATA = [
     "title": "A Directory Is Just a File",
     "subtitle": "Reusing the General File Machinery for Directory Records",
     "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"battle-card cyan-theme\">\n          <div class=\"card-title\">REGULAR FILE (<code>UFS_TYPE_FILE</code>)</div>\n          <div class=\"ascii-block text-xs\">\n[Z-Node] ➔ Extents ➔ [Raw User Data]\n(Text, images, binaries, documents)\n          </div>\n          <p class=\"text-xs mt-2\">Stores arbitrary application byte payloads.</p>\n        </div>\n        <div class=\"battle-card yellow-theme\">\n          <div class=\"card-title\">DIRECTORY FILE (<code>UFS_TYPE_DIR</code>)</div>\n          <div class=\"ascii-block text-xs\">\n[Z-Node] ➔ Extents ➔ [Array of dir_disk_t]\n(64-byte structured name records)\n          </div>\n          <p class=\"text-xs mt-2\">Stores an array of fixed-size directory entries.</p>\n        </div>\n      </div>\n      <div class=\"undertale-box mt-3\">\n        <div class=\"box-header hl-green\">WHY THIS MATTERS</div>\n        <p class=\"text-xs\">\n          The filesystem reuses one unified file and extent abstraction: directories grow, allocate physical extents, and use Z-Nodes identically to regular files without redundant machinery.\n        </p>\n      </div>\n    ",
-    "id": 53
+    "id": 55
   },
   {
     "chapter": "Chapter 5: Directory & Consistency",
@@ -507,10 +525,10 @@ const SLIDES_DATA = [
     "subtitle": "Instant Navigation & Painless Renaming",
     "quote": "The directory table is essentially a name ➔ Z-Node mapping, with \".\" and \"..\" providing built-in links to current and parent directory.",
     "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"undertale-box\">\n          <div class=\"box-header hl-cyan\">1. INSTANT NAVIGATION (<code>cd ..</code>)</div>\n          <p class=\"text-xs\">When navigating upward, the shell searches the current directory for <code>\"..\"</code>, reads its <code>object_id</code>, and jumps directly to the parent Z-Node:</p>\n          <div class=\"ascii-block text-xs mt-1\">\n/home (Z-Node 10)\n  └─► src (Z-Node 35)\n        └─► project (Z-Node 21)\n  cd .. ➔ find \"..\" ➔ read 35 ➔ jump!\n          </div>\n        </div>\n        <div class=\"undertale-box\">\n          <div class=\"box-header hl-yellow\">2. PAINLESS RENAMING</div>\n          <p class=\"text-xs\">A directory does not embed its parent's real path name:</p>\n          <div class=\"ascii-block text-xs mt-1\">\nRename \"project\" ➔ \"project_v2\":\n1. Update single entry in \"src\"\n2. ZERO child entries modified!\n          </div>\n          <p class=\"text-xs mt-1 hl-green\">Eliminates recursive path-update overhead completely.</p>\n        </div>\n      </div>\n    ",
-    "id": 54
+    "id": 56
   },
   {
-    "id": 55,
+    "id": 57,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -519,16 +537,16 @@ const SLIDES_DATA = [
     "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"undertale-box\">\n          <div class=\"box-header\">HOT CACHE TABLE</div>\n          <div class=\"ascii-block text-xs\">\n\"notes.txt\" ➔ Z-Node (Zone 3, #104)\n\"config\"    ➔ Z-Node (Zone 1, #12)\n\"report\"    ➔ Z-Node (Zone 5, #88)\n          </div>\n        </div>\n        <div class=\"undertale-box\">\n          <div class=\"box-header hl-green\">FAST PATH EXECUTION</div>\n          <p class=\"hl-green text-sm\">Repeated file accesses resolve in RAM instantly, avoiding disk directory traversal.</p>\n        </div>\n      </div>\n    "
   },
   {
-    "id": 56,
+    "id": 58,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
-    "title": "Why Not an Overly Complex On-Disk Directory?",
+    "title": "Why Not An Overly Complex On-Disk Directory?",
     "subtitle": "Simplicity & Crash Safety over B-Tree Splitting Overhead",
     "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"battle-card red-theme\">\n          <div class=\"card-title\">COMPLEX B-TREE DISK RISKS ❌</div>\n          <ul class=\"pixel-list text-xs\">\n            <li>Frequent node splitting and rebalancing.</li>\n            <li>Multi-block atomic crash updates required.</li>\n            <li>Complicated recovery mechanisms.</li>\n          </ul>\n        </div>\n        <div class=\"battle-card green-theme\">\n          <div class=\"card-title\">AURAFS BALANCED DESIGN ✔</div>\n          <p class=\"hl-yellow text-sm\">Simple persistent directory structure on disk + blazing-fast in-memory hot cache.</p>\n        </div>\n      </div>\n    "
   },
   {
-    "id": 57,
+    "id": 59,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -537,7 +555,7 @@ const SLIDES_DATA = [
     "content": "\n      <div class=\"undertale-dialogue\">\n        <div class=\"dialogue-avatar avatar-soul\"></div>\n        <div class=\"dialogue-text\">\n          A single logical file write modifies up to 5 distinct on-disk structures! What happens if power cuts halfway through?\n        </div>\n      </div>\n      <div class=\"undertale-box mt-3\">\n        <div class=\"box-header\">MODIFIED STRUCTURES</div>\n        <div class=\"grid-3-col\">\n          <div class=\"pill-badge\">1. Free-space Bitmap</div>\n          <div class=\"pill-badge\">2. Data Blocks</div>\n          <div class=\"pill-badge\">3. Z-Node Extents</div>\n          <div class=\"pill-badge\">4. Directory Record</div>\n          <div class=\"pill-badge\">5. Global Heatmap</div>\n          <div class=\"pill-badge\">6. Superblock</div>\n        </div>\n      </div>\n    "
   },
   {
-    "id": 58,
+    "id": 60,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -547,7 +565,7 @@ const SLIDES_DATA = [
     "content": "\n      <div class=\"undertale-grid-2\">\n        <div class=\"undertale-box\">\n          <div class=\"box-header hl-cyan\">EXAMPLE DELTA 1: JOP_SET_ZNODE</div>\n          <div class=\"ascii-block text-xs\">\nJOP_SET_ZNODE {\n  File = 42,\n  Field = size,\n  NewValue = 1024\n}\n          </div>\n        </div>\n        <div class=\"undertale-box\">\n          <div class=\"box-header hl-yellow\">EXAMPLE DELTA 2: JOP_ADD_EXTENT</div>\n          <div class=\"ascii-block text-xs\">\nJOP_ADD_EXTENT {\n  File = 42,\n  Zone = 5,\n  Start = 100,\n  Length = 8\n}\n          </div>\n        </div>\n      </div>\n    "
   },
   {
-    "id": 59,
+    "id": 61,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -556,7 +574,7 @@ const SLIDES_DATA = [
     "content": "\n      <div class=\"undertale-box\">\n        <div class=\"box-header\">EXPLICIT METADATA STRUCTURES</div>\n        <p class=\"text-xs\">Because Z-Nodes, Extents, and Bitmaps are structured explicitly, changes are expressed directly as operations:</p>\n        <div class=\"grid-2x2 mt-3\">\n          <div class=\"feature-card\"><code>CHANGE_FIELD(znode, size, val)</code></div>\n          <div class=\"feature-card\"><code>ADD_EXTENT(znode, zone, start, len)</code></div>\n          <div class=\"feature-card\"><code>MARK_BITMAP(zone, index, status)</code></div>\n          <div class=\"feature-card\"><code>UPDATE_HEATMAP(zone, run)</code></div>\n        </div>\n      </div>\n    "
   },
   {
-    "id": 60,
+    "id": 62,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -571,10 +589,10 @@ const SLIDES_DATA = [
     "title": "FAT32 vs. AuraFS: Directories & Crash Safety",
     "subtitle": "Messy Directory Sweeps vs. Hot Cache & Delta Journaling",
     "content": "\n    <div class=\"undertale-grid-2\">\n      <div class=\"battle-card cyan-theme\">\n        <div class=\"card-title hl-cyan\">❄️ FAT32 DIRECTORIES & RECOVERY</div>\n        <ul class=\"pixel-list text-xs\">\n          <li><strong class=\"hl-red\">32-Byte Linear Slots:</strong> Long filenames require hacky multi-slot VFAT records.</li>\n          <li><strong class=\"hl-red\">No Journaling:</strong> Power failures mid-write cause broken FAT chains, cross-linked files, and orphaned clusters.</li>\n          <li><strong class=\"hl-red\">Painful fsck Sweeps:</strong> Booting after a crash requires full disk scan (chkdsk / fsck.vfat) taking minutes or hours.</li>\n        </ul>\n      </div>\n      <div class=\"battle-card orange-theme\">\n        <div class=\"card-title hl-orange\">🔥 AURAFS DIRECTORIES & CRASH SAFETY</div>\n        <ul class=\"pixel-list text-xs\">\n          <li><strong class=\"hl-green\">Clean 64-Byte Records:</strong> <code>dir_disk_t</code> maps name to Z-Node ID directly.</li>\n          <li><strong class=\"hl-green\">Hot Directory Cache:</strong> In-memory LRU cache accelerates frequent path lookups.</li>\n          <li><strong class=\"hl-green\">Transactional Delta Journal:</strong> Records logical transitions atomically. Replays in milliseconds on boot with zero orphaned blocks.</li>\n        </ul>\n      </div>\n    </div>\n  ",
-    "id": 61
+    "id": 63
   },
   {
-    "id": 62,
+    "id": 64,
     "chapter": "Chapter 5: Directory & Consistency",
     "zone": "barrier",
     "zoneName": "Zone 07: The Barrier",
@@ -583,7 +601,7 @@ const SLIDES_DATA = [
     "content": "\n      <div class=\"undertale-box\">\n        <div class=\"box-header\">FULL ARCHITECTURE SUMMARY</div>\n        <div class=\"ascii-block text-xs\">\n                          APPLICATION\n                               │\n                               ▼\n                          FILESYSTEM API\n                               │\n                               ▼\n                    LOGICAL / VIRTUAL LAYER\n                               │\n                               ▼\n                      GRANULARITY DECISION (512B / 4KB / 16KB)\n                               │\n                               ▼\n                            ALLOCATOR\n                               │\n                ┌───────────────┼────────────────┐\n                ▼               ▼                ▼\n           ZONE HEATMAP     LOCAL BITMAP    GRANULARITY TAGS\n                │               │                │\n                └───────────────┼────────────────┘\n                                ▼\n                       PHYSICAL ALLOCATION\n                                │\n                                ▼\n                             Z-NODE ───► DIRECTORY / HOT CACHE\n                                │\n                         ┌──────┴──────┐\n                         ▼             ▼\n                      EXTENTS       METADATA\n                                │\n                                ▼\n                    PHYSICAL DATA (IN LOCAL ZONE)\n        </div>\n      </div>\n    "
   },
   {
-    "id": 63,
+    "id": 65,
     "chapter": "Chapter 6: Core Relationships & Q&A",
     "zone": "encounter",
     "zoneName": "Zone 08: The Final Encounter",

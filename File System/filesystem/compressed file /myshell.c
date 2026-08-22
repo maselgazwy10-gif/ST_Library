@@ -80,6 +80,12 @@ int main(int argc, char **argv) {
             printf("  create <path>           - Create an empty file\n");
             printf("  rm <path>               - Delete a file\n");
             printf("  stat <path>             - Show file info & physical block size\n");
+            printf("  inspect <path>          - Inspect physical extents, slack, & inline state\n");
+            printf("  setxattr <p> <k> <v>    - Set extended attribute (e.g. user.mime_type)\n");
+            printf("  getxattr <p> <k>        - Get extended attribute value\n");
+            printf("  listxattr <path>        - List all extended attribute keys\n");
+            printf("  rmxattr <path> <key>    - Remove an extended attribute\n");
+            printf("  compress <path>         - Transparently compress file extents using LZ4\n");
             printf("  cat <path>              - Read and print file contents\n");
             printf("  write <path> <text>     - Write text into a file (appends)\n");
             printf("  truncate <path> <size>  - Truncate file to a specific size\n");
@@ -231,8 +237,134 @@ int main(int argc, char **argv) {
                 printf("  Type:          %s\n", type_str);
                 printf("  Logical Size:  %zu bytes\n", s.size);
                 printf("  Physical Size: %zu bytes\n", s.physical_size);
+                char mime[64] = {0};
+                if (ufs_getxattr(target, "user.mime_type", mime, sizeof(mime) - 1) > 0) {
+                    printf("  MIME Type:     %s (Retrieved from Z-Node xattr in 0ms!)\n", mime);
+                }
             } else {
                 printf("Failed to read stat.\n");
+            }
+        }
+        else if (!strcmp(cmd, "inspect")) {
+            if (arg_count < 2) {
+                printf("Usage: inspect <path>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            struct ufs_stat s;
+            if (ufs_stat(target, &s) != 0) {
+                printf("Failed to inspect %s.\n", target);
+                continue;
+            }
+            int is_inline = 0;
+            uint16_t ext_count = 0;
+            struct ufs_extent_info exts[64];
+            if (ufs_inspect(target, &is_inline, &ext_count, exts, 64) == 0) {
+                printf("============================================================\n");
+                printf("  AURAFS ALLOCATION INSPECTOR: %s\n", target);
+                printf("============================================================\n");
+                printf("  Type:          %s\n", (s.type == UFS_TYPE_DIR) ? "Directory" : "File");
+                printf("  Logical Size:  %zu bytes\n", s.size);
+                printf("  Physical Size: %zu bytes\n", s.physical_size);
+                if (s.physical_size > 0 && s.size > 0 && s.physical_size >= s.size) {
+                    double slack_pct = (1.0 - (double)s.size / (double)s.physical_size) * 100.0;
+                    printf("  Slack (Waste): %zu bytes (%.1f%%)\n", s.physical_size - s.size, slack_pct);
+                }
+                char xattr_list[512] = {0};
+                int xattr_len = ufs_listxattr(target, xattr_list, sizeof(xattr_list));
+                if (xattr_len > 0) {
+                    printf("  Extended Attributes (xattrs):\n");
+                    int off = 0;
+                    while (off < xattr_len) {
+                        char val[65] = {0};
+                        ufs_getxattr(target, xattr_list + off, val, sizeof(val) - 1);
+                        printf("    -> %s = \"%s\"\n", xattr_list + off, val);
+                        off += strlen(xattr_list + off) + 1;
+                    }
+                }
+                if (is_inline) {
+                    printf("  Storage Tier:  [TIER 0: INLINE Z-NODE DATA] (0 Physical blocks used!)\n");
+                } else {
+                    printf("  Storage Tier:  [EXTENT MAPPED] (%u extents)\n", ext_count);
+                    for (int i = 0; i < ext_count && i < 64; i++) {
+                        char *comp_str = (exts[i].granularity & UFS_FLAG_COMPRESSED_LZ4) ? " [COMPRESSED LZ4 ⚡]" : "";
+                        printf("    -> Extent #%d: Zone %u | Units %u-%u (%u units = %u bytes)%s | File [%lu..%lu]\n",
+                               i, exts[i].zone_id, exts[i].physical_unit,
+                               exts[i].physical_unit + exts[i].physical_units - 1,
+                               exts[i].physical_units, exts[i].physical_units * 512, comp_str,
+                               (unsigned long)exts[i].logical_start,
+                               (unsigned long)(exts[i].logical_start + exts[i].logical_length));
+                    }
+                }
+                printf("============================================================\n");
+            } else {
+                printf("Failed to inspect extents.\n");
+            }
+        }
+        else if (!strcmp(cmd, "setxattr")) {
+            if (arg_count < 4) {
+                printf("Usage: setxattr <path> <key> <value>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            if (ufs_setxattr(target, args[2], args[3], strlen(args[3])) == 0) {
+                printf("Successfully set xattr '%s' = '%s' on %s\n", args[2], args[3], target);
+            } else {
+                printf("Failed to set xattr on %s.\n", target);
+            }
+        }
+        else if (!strcmp(cmd, "getxattr")) {
+            if (arg_count < 3) {
+                printf("Usage: getxattr <path> <key>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            char val[65] = {0};
+            int len = ufs_getxattr(target, args[2], val, sizeof(val) - 1);
+            if (len >= 0) {
+                printf("%s.%s = \"%s\" (%d bytes)\n", target, args[2], val, len);
+            } else {
+                printf("xattr '%s' not found on %s.\n", args[2], target);
+            }
+        }
+        else if (!strcmp(cmd, "listxattr")) {
+            if (arg_count < 2) {
+                printf("Usage: listxattr <path>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            char list[512] = {0};
+            int total = ufs_listxattr(target, list, sizeof(list));
+            if (total > 0) {
+                printf("Extended attributes for %s:\n", target);
+                int off = 0;
+                while (off < total) {
+                    char val[65] = {0};
+                    ufs_getxattr(target, list + off, val, sizeof(val) - 1);
+                    printf("  - %s = \"%s\"\n", list + off, val);
+                    off += strlen(list + off) + 1;
+                }
+            } else if (total == 0) {
+                printf("No extended attributes found on %s.\n", target);
+            } else {
+                printf("Failed to list xattrs on %s.\n", target);
+            }
+        }
+        else if (!strcmp(cmd, "rmxattr")) {
+            if (arg_count < 3) {
+                printf("Usage: rmxattr <path> <key>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            if (ufs_removexattr(target, args[2]) == 0) {
+                printf("Successfully removed xattr '%s' from %s\n", args[2], target);
+            } else {
+                printf("Failed to remove xattr '%s' from %s.\n", args[2], target);
             }
         }
         else if (!strcmp(cmd, "cat")) {
@@ -296,6 +428,32 @@ int main(int argc, char **argv) {
                 printf("Successfully truncated %s to %zu bytes.\n", target, new_size);
             } else {
                 printf("Failed to truncate file.\n");
+            }
+        }
+        else if (!strcmp(cmd, "compress")) {
+            if (arg_count < 2) {
+                printf("Usage: compress <path>\n");
+                continue;
+            }
+            char target[MAX_PATH_LEN];
+            get_absolute_path(args[1], target, sizeof(target), cwd);
+            struct ufs_stat before, after;
+            if (ufs_stat(target, &before) != 0) {
+                printf("Failed to stat %s.\n", target);
+                continue;
+            }
+            if (ufs_compress_file(target) == 0) {
+                ufs_stat(target, &after);
+                double saved = 0.0;
+                if (before.physical_size > 0) {
+                    saved = (1.0 - (double)after.physical_size / (double)before.physical_size) * 100.0;
+                }
+                printf("Successfully compressed %s with LZ4!\n", target);
+                printf("  Physical size before: %zu bytes (%zu units)\n", before.physical_size, before.physical_size / 512);
+                printf("  Physical size after:  %zu bytes (%zu units)\n", after.physical_size, after.physical_size / 512);
+                printf("  Flash space saved:    %.1f%%\n", saved);
+            } else {
+                printf("Failed to compress %s.\n", target);
             }
         }
         else {

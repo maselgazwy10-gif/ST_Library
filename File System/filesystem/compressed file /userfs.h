@@ -56,6 +56,27 @@ int ufs_listdir(const char *path,
 
 int ufs_stat(const char *path, struct ufs_stat *st);
 
+struct ufs_extent_info {
+    uint16_t zone_id;
+    uint16_t granularity;
+    uint32_t physical_unit;
+    uint32_t physical_units;
+    uint64_t logical_start;
+    uint64_t logical_length;
+};
+
+int ufs_inspect(const char *path, int *is_inline, uint16_t *extent_count,
+                struct ufs_extent_info *extents, size_t max_extents);
+
+int ufs_setxattr(const char *path, const char *name, const void *value, size_t size);
+int ufs_getxattr(const char *path, const char *name, void *value, size_t size);
+int ufs_listxattr(const char *path, char *list, size_t size);
+int ufs_removexattr(const char *path, const char *name);
+
+#define UFS_FLAG_COMPRESSED_LZ4 0x8000u
+
+int ufs_compress_file(const char *path);
+
 #ifdef __cplusplus
 }
 #endif
