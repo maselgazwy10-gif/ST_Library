@@ -214,11 +214,17 @@ All legacy and utility features from the `dsfa` development branch were scanned,
    - Displays ISO human-readable timestamps (`mtime`, `atime`, `ctime`), Z-Node slot/ID, block breakdown (512B, 4KB, 16KB units), real data zones, link counts, and 0ms MIME classifications.
 4. **Streaming File Reading (`cat <path>`)**:
    - Implemented streaming chunked reads (`while ufs_read() > 0`) for arbitrary file sizes.
-5. **Interactive Filesystem Debugger (`debug` Suite)**:
-   - `debug sb` / `debug fs`: Inspects raw Superblock geometry, journal pointers, and zone free-run statistics.
-   - `debug tree [path]`: Recursively prints the directory tree with object IDs and types.
-   - `debug file <path>`: Dumps raw Z-Node flags, physical extent layouts, and extended attributes.
-   - `debug check` / `fsck`: Automated multi-phase consistency checker verifying magic headers, bitmaps, and directory link integrity.
+5. **Comprehensive Low-Level Filesystem Debugger (`debug` Suite)**:
+   - `debug sb` / `debug fs` / `debug super`: Dumps raw Superblock geometry, clean state, journal pointers, and a full **32-Zone Summary Table** (free units, used units, largest contiguous runs, active Z-Nodes, utilization %).
+   - `debug zone <zone_id>`: Displays zone header layout, unit allocation breakdown, roving wear-leveling pointer (`next_fit_cursor`), 256-unit ASCII bitmap visualizer (`#`=Allocated, `.`=Free), and active Z-Node slot table.
+   - `debug file <path>` / `debug znode <path>`: Dumps complete Z-Node fields, raw timestamps (`ctime`, `mtime`, `atime`), Tier-0 inline payload bytes (hex & ASCII), primary extent table (physical unit spans, byte sizes, logical offsets, compression status), chained overflow extent pages, and extended attribute key-value pairs.
+   - `debug dir <path>` / `debug dirent <path>`: Dumps raw 64-byte `dir_disk_t` records inside directory blocks, displaying active entries, deleted tombstone records, object IDs, and generation counters.
+   - `debug tree [path]`: Recursively prints the full hierarchical directory tree with branch markers (`├──`), object IDs, file sizes, and types.
+   - `debug cache`: Inspects the in-memory Hot Directory Cache (cached path names, directory IDs, resolved object IDs, and LRU clock counters).
+   - `debug journal` / `debug log`: Inspects transaction journal metadata, start page, journal size, head pointer, and next transaction ID.
+   - `debug hex <path> [offset] [length]`: Formatted Hex & ASCII file byte inspector directly from disk.
+   - `debug page <page_num>`: Raw 4KB disk page hex preview.
+   - `debug check` / `debug fsck`: Automated 5-phase online consistency checker verifying superblock magic, clean flags, root Z-Node, zone bitmaps, and directory link hierarchy.
 
 ---
 

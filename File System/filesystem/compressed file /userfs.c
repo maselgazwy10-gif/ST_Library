@@ -2127,8 +2127,7 @@ static int directory_find(uint64_t dir_id, const char *name,
             g_fs.hot[insert].name_hash = h;
             g_fs.hot[insert].object_id = de.object_id;
             g_fs.hot[insert].last_used = ++g_fs.hot_clock;
-            strncpy(g_fs.hot[insert].name, de.name, UFS_MAX_NAME);
-            g_fs.hot[insert].name[UFS_MAX_NAME] = '\0';
+            snprintf(g_fs.hot[insert].name, sizeof(g_fs.hot[insert].name), "%s", de.name);
             return 0;
         }
     }
@@ -3943,4 +3942,142 @@ int ufs_compress_file(const char *path) {
         if (g_fs.zone_bitmaps[zi] && flush_zone_bitmap(zi) < 0) return -1;
 
     return flush_superblock();
+}
+
+int ufs_debug_get_zone(uint32_t zone_id, struct ufs_zone_debug *zd, struct ufs_znode_slot_debug *slots, size_t max_slots, int *out_slot_count) {
+    if (!fs_mounted() || zone_id >= g_fs.sb.zone_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (zd) {
+        memset(zd, 0, sizeof(*zd));
+        zd->zone_id = zone_id;
+        zd->total_units = g_fs.sb.zones[zone_id].total_units;
+        zd->free_units = g_fs.sb.zones[zone_id].free_units;
+        zd->largest_free_run = g_fs.sb.zones[zone_id].largest_free_run;
+        zd->znode_used = g_fs.sb.zones[zone_id].znode_used;
+        zd->next_fit_cursor = g_fs.sb.zones[zone_id].reserved;
+        zd->bitmap_bytes = (zd->total_units + 7) / 8;
+        if (g_fs.zone_bitmaps[zone_id]) {
+            size_t copy_bytes = (zd->bitmap_bytes < sizeof(zd->bitmap_preview)) ? zd->bitmap_bytes : sizeof(zd->bitmap_preview);
+            memcpy(zd->bitmap_preview, g_fs.zone_bitmaps[zone_id], copy_bytes);
+        }
+    }
+    if (slots && out_slot_count) {
+        int cnt = 0;
+        for (uint32_t s = 1; s < UFS_ZNODE_SLOTS && (size_t)cnt < max_slots; ++s) {
+            znode_disk_t zn;
+            uint64_t id = make_object_id(zone_id, s);
+            if (read_znode(id, &zn) == 0 && (zn.magic == UFS_ZNODE_MAGIC || zn.magic == UFS_EXTENT_PAGE_MAGIC)) {
+                slots[cnt].slot = s;
+                slots[cnt].magic = zn.magic;
+                slots[cnt].type = zn.type;
+                slots[cnt].flags = zn.flags;
+                slots[cnt].size = zn.size;
+                slots[cnt].link_count = zn.link_count;
+                slots[cnt].extent_count = zn.extent_count;
+                slots[cnt].object_id = id;
+                cnt++;
+            }
+        }
+        *out_slot_count = cnt;
+    }
+    return 0;
+}
+
+int ufs_debug_get_dirents(const char *path, struct ufs_dirent_raw *entries, size_t max_entries, int *out_count) {
+    if (!fs_mounted() || !path || !entries || !out_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t dir_id;
+    if (resolve_path(path, &dir_id, NULL, NULL) < 0) return -1;
+    znode_disk_t dir;
+    if (read_znode(dir_id, &dir) < 0 || dir.type != UFS_TYPE_DIR) {
+        errno = ENOTDIR;
+        return -1;
+    }
+    uint32_t slots = (uint32_t)(dir.size / sizeof(dir_disk_t));
+    int cnt = 0;
+    for (uint32_t s = 0; s < slots && (size_t)cnt < max_entries; ++s) {
+        dir_disk_t de;
+        if (dir_read_entry(dir_id, s, &de) < 0) break;
+        snprintf(entries[cnt].name, sizeof(entries[cnt].name), "%s", de.name);
+        entries[cnt].type = de.type;
+        entries[cnt].active = de.active;
+        entries[cnt].object_id = de.object_id;
+        entries[cnt].generation = de.generation;
+        cnt++;
+    }
+    *out_count = cnt;
+    return 0;
+}
+
+int ufs_debug_get_journal(struct ufs_journal_debug *jd) {
+    if (!fs_mounted() || !jd) {
+        errno = EINVAL;
+        return -1;
+    }
+    jd->journal_start_page = g_fs.sb.journal_start_page;
+    jd->journal_pages = g_fs.sb.journal_pages;
+    jd->journal_head = g_fs.sb.journal_head;
+    jd->next_txid = g_fs.sb.next_txid;
+    return 0;
+}
+
+int ufs_debug_get_cache(struct ufs_cache_debug *entries, size_t max_entries, int *out_count) {
+    if (!fs_mounted() || !entries || !out_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    int cnt = 0;
+    for (size_t i = 0; i < UFS_HOT_ENTRIES && (size_t)cnt < max_entries; ++i) {
+        if (g_fs.hot[i].valid) {
+            strncpy(entries[cnt].name, g_fs.hot[i].name, UFS_MAX_NAME);
+            entries[cnt].name[UFS_MAX_NAME] = '\0';
+            entries[cnt].dir_id = g_fs.hot[i].dir_id;
+            entries[cnt].object_id = g_fs.hot[i].object_id;
+            entries[cnt].last_used = g_fs.hot[i].last_used;
+            cnt++;
+        }
+    }
+    *out_count = cnt;
+    return 0;
+}
+
+int ufs_debug_get_overflow_extents(const char *path, struct ufs_extent_info *exts, size_t max_exts, int *out_count) {
+    if (!fs_mounted() || !path || !exts || !out_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    int cnt = 0;
+    uint64_t page_id = zn.extent_overflow_id;
+    while (page_id != 0 && (size_t)cnt < max_exts) {
+        extent_page_disk_t page;
+        if (read_extent_page(page_id, &page) < 0) break;
+        for (uint16_t i = 0; i < page.count && (size_t)cnt < max_exts; ++i) {
+            exts[cnt].zone_id = page.extents[i].zone_id;
+            exts[cnt].granularity = page.extents[i].granularity;
+            exts[cnt].physical_unit = page.extents[i].physical_unit;
+            exts[cnt].physical_units = page.extents[i].physical_units;
+            exts[cnt].logical_start = page.extents[i].logical_start;
+            exts[cnt].logical_length = page.extents[i].logical_length;
+            cnt++;
+        }
+        page_id = page.next_id;
+    }
+    *out_count = cnt;
+    return 0;
+}
+
+int ufs_debug_read_raw_page(uint32_t page_num, void *buf) {
+    if (!fs_mounted() || !buf) {
+        errno = EINVAL;
+        return -1;
+    }
+    return disk_read_page(page_num, buf);
 }

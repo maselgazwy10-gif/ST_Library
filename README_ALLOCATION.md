@@ -289,19 +289,12 @@ graph LR
 * **Presenter Script**:
   > *"Now let's examine Act 2: The Smart Growth Engine. As files expand, AuraFS executes a three-tier growth escalation:*
   > 1. **Zero-I/O Slack Reuse:** If an existing extent has unused physical capacity (e.g. a 1 KiB file in a 4 KiB extent growing to 2 KiB), `consume_last_extent_slack` simply increases `logical_length`. Zero disk writes and zero bitmap changes are needed.
-  > 2. **In-Place Tail Extension:** If slack is exhausted, `try_extend_tail_extent` checks whether adjacent units on disk are free. If so, it expands the extent in place.
+  > 2. **In-Place Tail Extension & Coalescing:** If slack is exhausted, `try_extend_tail_extent` checks whether adjacent units on disk are free and expands the extent in place. Adjacent appends merge directly into 1 continuous extent descriptor.
   > 3. **Dynamic Promotion:** As files grow past 4 KiB, subsequent allocations automatically upgrade to 16 KiB extents for peak throughput."*
 
 ---
 
-#### Slide 47: Extent Coalescing & Tail Growth (Act 2 Innovation)
-* **Slide Title**: Act 2: Extent Coalescing & Tail Growth (Eliminating Extent Bloat)
-* **Presenter Script**:
-  > *"In earlier implementations, ten consecutive 512-byte appends would create ten separate extent descriptors, quickly exhausting the Z-Node's 16 inline slots. We resolved this by implementing **Adjacent Extent Coalescing** in `mapping_add`. When an append allocates units immediately following the file's last extent in the same zone, AuraFS merges them directly into the previous extent descriptor. 10 appends become 1 extent. No metadata bloat, no overflow pages required."*
-
----
-
-#### Slide 48: Tier 0 — Inline Z-Node Data (Act 3 Showstopper)
+#### Slide 47: Tier 0 — Inline Z-Node Data (Act 3 Showstopper)
 * **Slide Title**: Act 3: Tier 0 — Inline Z-Node Data (Zero-Block Storage for $\le 384\text{ B}$)
 * **Presenter Script**:
   > *"Now for our flagship innovation in Act 3: **Tier-0 Inline Z-Node Data**. In embedded and operating system environments, many files are tiny—sensor logs, keys, status flags under 384 bytes.*
@@ -310,7 +303,7 @@ graph LR
 
 ---
 
-#### Slide 49: Extended Attributes (xattrs) & MIME Indexing (Act 3 Innovation)
+#### Slide 48: Extended Attributes (xattrs) & MIME Indexing (Act 3 Innovation)
 * **Slide Title**: Act 3: Extended Attributes (xattrs) & MIME Indexing (Extension-Free Freedom)
 * **Presenter Script**:
   > *"Our next Act 3 innovation is **Extended Attributes (xattrs)** directly supported in the Z-Node.*
@@ -320,7 +313,7 @@ graph LR
 
 ---
 
-#### Slide 50: Transparent Per-Extent Compression (LZ4) (Act 3 Showstopper)
+#### Slide 49: Transparent Per-Extent Compression (LZ4) (Act 3 Showstopper)
 * **Slide Title**: Act 3: Transparent Per-Extent Compression (LZ4) (Sub-Block Density & Flash Lifespan)
 * **Presenter Script**:
   > *"Our next flagship innovation in Act 3 is **Transparent Per-Extent LZ4 Compression**.*
@@ -333,7 +326,7 @@ graph LR
 
 ---
 
-#### Slide 51: Hardware & Flash Optimizations (Act 3 Showstopper)
+#### Slide 50: Hardware & Flash Optimizations (Act 3 Showstopper)
 * **Slide Title**: Act 3: Hardware & Flash Optimizations (64-Bit Bitwise Scanner & Wear-Leveling)
 * **Presenter Script**:
   > *"To ensure optimal performance on physical hardware, we engineered two low-level innovations:*
@@ -342,14 +335,14 @@ graph LR
 
 ---
 
-#### Slide 52: The Master 3-Act Allocation Workflow
+#### Slide 51: The Master 3-Act Allocation Workflow
 * **Slide Title**: The Master 3-Act Allocation Workflow (End-to-End Decision Pipeline)
 * **Presenter Script**:
-  > *"To summarize the entire allocation pipeline on Slide 52: Every write is evaluated in sequence—Tier-0 Inline for tiny files, Slack Reuse for existing extents, In-Place Tail Expansion & Coalescing for adjacent growth, LZ4 Extent Compression for dense storage, and Contiguous-First Multi-Granularity Fallback for new allocations. This gives AuraFS unprecedented storage density and near-zero fragmentation."*
+  > *"To summarize the entire allocation pipeline on Slide 51: Every write is evaluated in sequence—Tier-0 Inline for tiny files, Slack Reuse for existing extents, In-Place Tail Expansion & Coalescing for adjacent growth, LZ4 Extent Compression for dense storage, and Contiguous-First Multi-Granularity Fallback for new allocations. This gives AuraFS unprecedented storage density and near-zero fragmentation."*
 
 ---
 
-#### Slide 53: Comparison Arena (FAT32 vs. Enhanced AuraFS)
+#### Slide 52: Comparison Arena (FAT32 vs. Enhanced AuraFS)
 * **Slide Title**: FAT32 vs. AuraFS: Allocation & Granularity (Frostfire Blizzard Arena)
 * **Presenter Script**:
   > *"Comparing this against FAT32: FAT32 locks you into rigid, coarse clusters where small files waste gigabytes of space, and sequential appends constantly fragment the FAT table. AuraFS provides a 4-tier storage spectrum (Inline, 512B, 4KB, 16KB), automatic extent coalescing, LZ4 compression, and hardware-accelerated allocation."*
