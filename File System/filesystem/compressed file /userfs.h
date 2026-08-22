@@ -155,6 +155,81 @@ int ufs_debug_get_cache(struct ufs_cache_debug *entries, size_t max_entries, int
 int ufs_debug_get_overflow_extents(const char *path, struct ufs_extent_info *exts, size_t max_exts, int *out_count);
 int ufs_debug_read_raw_page(uint32_t page_num, void *buf);
 
+/* Enhanced Low-Level Debug Structures */
+struct ufs_superblock_debug {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t image_size;
+    uint32_t total_pages;
+    uint32_t zone_count;
+    uint32_t zone_size;
+    uint32_t zone_header_pages;
+    uint32_t znode_table_pages;
+    uint32_t bitmap_pages;
+    uint32_t journal_start_page;
+    uint32_t journal_pages;
+    uint32_t zones_start_page;
+    uint64_t root_id;
+    uint64_t next_txid;
+    uint32_t journal_head;
+    uint32_t clean;
+    uint32_t stored_checksum;
+    uint32_t calculated_checksum;
+    int      checksum_valid;
+};
+
+struct ufs_znode_raw_debug {
+    uint32_t magic;
+    uint8_t  version;
+    uint8_t  type;
+    uint16_t flags;
+    uint16_t local_id;
+    uint16_t link_count;
+    uint16_t preferred_granularity;
+    uint16_t extent_count;
+    uint32_t generation;
+    uint64_t size;
+    uint64_t parent_id;
+    uint64_t extent_overflow_id;
+    uint64_t xattr_page_id;
+    uint32_t mtime;
+    uint32_t atime;
+    uint32_t ctime;
+    uint8_t  raw_bytes[512];
+};
+
+struct ufs_xattr_raw_debug {
+    char     name[32];
+    char     value[128];
+    uint16_t value_len;
+    uint8_t  active;
+};
+
+struct ufs_fsck_stat {
+    int      errors;
+    int      warnings;
+    uint32_t total_files;
+    uint32_t total_dirs;
+    uint32_t total_extents;
+    uint64_t total_allocated_bytes;
+    uint32_t orphaned_units;
+    uint32_t link_mismatches;
+    int      superblock_ok;
+    int      clean_flag_ok;
+    int      root_dir_ok;
+    int      zone_headers_ok;
+    int      bitmap_crosscheck_ok;
+    int      link_counts_ok;
+    int      xattr_chains_ok;
+};
+
+int ufs_debug_get_full_bitmap(uint32_t zone_id, uint8_t *out_bitmap, size_t max_bytes, size_t *out_bytes, uint32_t *out_data_first);
+int ufs_debug_get_superblock(struct ufs_superblock_debug *out_sb);
+int ufs_debug_get_raw_znode(const char *path, struct ufs_znode_raw_debug *out_zn);
+int ufs_debug_get_raw_xattrs(const char *path, struct ufs_xattr_raw_debug *entries, size_t max_entries, int *out_count, uint64_t *out_xattr_page_id);
+int ufs_debug_fsck(struct ufs_fsck_stat *out_stat);
+int ufs_debug_get_system_overview(struct ufs_statfs *sb, uint64_t *total_used_bytes, uint32_t *file_count, uint32_t *dir_count, uint32_t *active_txs, uint32_t *cache_valid);
+
 #ifdef __cplusplus
 }
 #endif

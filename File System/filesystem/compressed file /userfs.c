@@ -849,28 +849,51 @@ static int replay_journal(void) {
     return 0;
 }
 
-static int choose_zone_for_allocation(uint32_t need_units, uint32_t preferred_zone) {
-    int best = -1;
+static int find_zone_for_new_file(void) {
+    int best_zone = -1;
     uint32_t best_largest = 0;
 
-    for (uint32_t pass = 0; pass < 2; ++pass) {
-        for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z) {
-            uint32_t zone = (pass == 0) ? (preferred_zone + z) % g_fs.sb.zone_count : z;
-            if (zone == 0 && preferred_zone != 0) {
-                /* zone 0 is still valid; don't exclude it */
-            }
-            zone_header_disk_t zh;
-            if (read_zone_header(zone, &zh) < 0) continue;
-            if (load_zone_bitmap(zone) < 0) continue;
-            if (update_zone_summary(zone) < 0) continue;
+    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z) {
+        zone_header_disk_t zh;
+        if (read_zone_header(z, &zh) < 0) continue;
+        if (load_zone_bitmap(z) < 0) continue;
+        if (update_zone_summary(z) < 0) continue;
 
-            if (g_fs.sb.zones[zone].largest_free_run >= need_units &&
-                g_fs.sb.zones[zone].largest_free_run > best_largest) {
-                best = (int)zone;
-                best_largest = g_fs.sb.zones[zone].largest_free_run;
+        /* Must have free Z-Node slot available */
+        if (g_fs.sb.zones[z].znode_used >= (UFS_ZNODE_SLOTS - 1)) continue;
+
+        if (g_fs.sb.zones[z].largest_free_run > best_largest || best_zone < 0) {
+            best_largest = g_fs.sb.zones[z].largest_free_run;
+            best_zone = (int)z;
+        }
+    }
+    return (best_zone >= 0) ? best_zone : 0;
+}
+
+static int choose_zone_for_allocation(uint32_t need_units, uint32_t preferred_zone) {
+    /* Priority 1: Check preferred_zone first for strict locality */
+    if (preferred_zone < g_fs.sb.zone_count) {
+        zone_header_disk_t zh;
+        if (read_zone_header(preferred_zone, &zh) == 0 &&
+            load_zone_bitmap(preferred_zone) == 0 &&
+            update_zone_summary(preferred_zone) == 0) {
+            if (g_fs.sb.zones[preferred_zone].largest_free_run >= need_units) {
+                return (int)preferred_zone;
             }
         }
-        if (best >= 0) return best;
+    }
+
+    /* Priority 2: Fallback to next zones cyclically only if preferred_zone cannot fit need_units */
+    for (uint32_t i = 1; i < g_fs.sb.zone_count; ++i) {
+        uint32_t zone = (preferred_zone + i) % g_fs.sb.zone_count;
+        zone_header_disk_t zh;
+        if (read_zone_header(zone, &zh) < 0) continue;
+        if (load_zone_bitmap(zone) < 0) continue;
+        if (update_zone_summary(zone) < 0) continue;
+
+        if (g_fs.sb.zones[zone].largest_free_run >= need_units) {
+            return (int)zone;
+        }
     }
     return -1;
 }
@@ -880,43 +903,37 @@ static int choose_zone_for_partial_allocation(
     uint32_t *out_zone,
     uint32_t *out_largest_run)
 {
-    int best = -1;
-    uint32_t best_run = 0;
-
-    for (uint32_t z = 0;
-         z < g_fs.sb.zone_count;
-         ++z) {
-
-        uint32_t zone =
-            (preferred_zone + z) %
-            g_fs.sb.zone_count;
-
+    /* Priority 1: Keep locality in preferred_zone if it has ANY free run */
+    if (preferred_zone < g_fs.sb.zone_count) {
         zone_header_disk_t zh;
-
-        if (read_zone_header(zone, &zh) < 0)
-            continue;
-        if (load_zone_bitmap(zone) < 0)
-            continue;
-        if (update_zone_summary(zone) < 0)
-            continue;
-
-        uint32_t largest =
-            g_fs.sb.zones[zone].largest_free_run;
-
-        if (largest > best_run) {
-            best = (int)zone;
-            best_run = largest;
+        if (read_zone_header(preferred_zone, &zh) == 0 &&
+            load_zone_bitmap(preferred_zone) == 0 &&
+            update_zone_summary(preferred_zone) == 0) {
+            if (g_fs.sb.zones[preferred_zone].largest_free_run > 0) {
+                *out_zone = preferred_zone;
+                *out_largest_run = g_fs.sb.zones[preferred_zone].largest_free_run;
+                return 0;
+            }
         }
     }
 
-    if (best < 0 || best_run == 0) {
-        errno = ENOSPC;
-        return -1;
+    /* Priority 2: Fallback to other zones if preferred_zone is 100% full */
+    for (uint32_t i = 1; i < g_fs.sb.zone_count; ++i) {
+        uint32_t zone = (preferred_zone + i) % g_fs.sb.zone_count;
+        zone_header_disk_t zh;
+        if (read_zone_header(zone, &zh) < 0) continue;
+        if (load_zone_bitmap(zone) < 0) continue;
+        if (update_zone_summary(zone) < 0) continue;
+
+        if (g_fs.sb.zones[zone].largest_free_run > 0) {
+            *out_zone = zone;
+            *out_largest_run = g_fs.sb.zones[zone].largest_free_run;
+            return 0;
+        }
     }
 
-    *out_zone = (uint32_t)best;
-    *out_largest_run = best_run;
-    return 0;
+    errno = ENOSPC;
+    return -1;
 }
 
 static uint32_t g_zone_cursors[UFS_MAX_ZONES] = {0};
@@ -1701,6 +1718,12 @@ static int try_extend_tail_extent(znode_disk_t *zn,
             u);
     }
 
+    g_zone_cursors[ex->zone_id] = extension_end % zh.total_units;
+    if (g_zone_cursors[ex->zone_id] < zh.data_first_unit) {
+        g_zone_cursors[ex->zone_id] = zh.data_first_unit;
+    }
+    update_zone_summary(ex->zone_id);
+
     ex->physical_units += extra_units;
     ex->logical_length =
         needed_size -
@@ -1718,10 +1741,9 @@ static int ensure_capacity(uint64_t object_id,
      * 1. Reuse already-allocated but logically unused capacity
      *    in the final extent.
      *
-     * 2. Try to extend the tail extent into immediately adjacent free physical units.
+     * 2. Try to extend the tail extent into immediately adjacent free physical units in the same zone.
      *
-     * 3. Otherwise use the fragmentation-aware multi-extent
-     *    allocator.
+     * 3. Otherwise allocate new extents, prioritizing locality in the same zone.
      */
     if (consume_last_extent_slack(
             zn,
@@ -1757,8 +1779,12 @@ static int ensure_capacity(uint64_t object_id,
         uint32_t unit;
         uint32_t units;
 
+        /* Maintain locality in the same zone: last extent's zone or file's home zone */
+        uint64_t target_zone = (zn->extent_count > 0 && zn->extent_count <= UFS_EXTENTS) ?
+                               (uint64_t)zn->extents[zn->extent_count - 1].zone_id : object_zone(object_id);
+
         if (allocate_physical_region(
-                object_zone(object_id),
+                target_zone,
                 request_bytes,
                 gran,
                 &zone,
@@ -2612,8 +2638,11 @@ int ufs_create(const char *path) {
         return -1;
     }
 
+    /* When creating a new file, select zone with the longest free run */
+    int best_zone = find_zone_for_new_file();
+
     uint64_t id;
-    if (object_znode_alloc((int)object_zone(parent), UFS_TYPE_FILE,
+    if (object_znode_alloc(best_zone, UFS_TYPE_FILE,
                            parent, &id) < 0)
         return -1;
 
@@ -3956,7 +3985,7 @@ int ufs_debug_get_zone(uint32_t zone_id, struct ufs_zone_debug *zd, struct ufs_z
         zd->free_units = g_fs.sb.zones[zone_id].free_units;
         zd->largest_free_run = g_fs.sb.zones[zone_id].largest_free_run;
         zd->znode_used = g_fs.sb.zones[zone_id].znode_used;
-        zd->next_fit_cursor = g_fs.sb.zones[zone_id].reserved;
+        zd->next_fit_cursor = (g_zone_cursors[zone_id] > 0) ? g_zone_cursors[zone_id] : g_fs.sb.zones[zone_id].reserved;
         zd->bitmap_bytes = (zd->total_units + 7) / 8;
         if (g_fs.zone_bitmaps[zone_id]) {
             size_t copy_bytes = (zd->bitmap_bytes < sizeof(zd->bitmap_preview)) ? zd->bitmap_bytes : sizeof(zd->bitmap_preview);
@@ -4081,3 +4110,250 @@ int ufs_debug_read_raw_page(uint32_t page_num, void *buf) {
     }
     return disk_read_page(page_num, buf);
 }
+
+int ufs_debug_get_full_bitmap(uint32_t zone_id, uint8_t *out_bitmap, size_t max_bytes, size_t *out_bytes, uint32_t *out_data_first) {
+    if (!fs_mounted() || zone_id >= g_fs.sb.zone_count || !out_bitmap || !out_bytes) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (load_zone_bitmap(zone_id) < 0) return -1;
+    zone_header_disk_t zh;
+    if (read_zone_header(zone_id, &zh) < 0) return -1;
+    if (out_data_first) *out_data_first = zh.data_first_unit;
+    size_t copy_len = (zh.bitmap_bytes < max_bytes) ? zh.bitmap_bytes : max_bytes;
+    memcpy(out_bitmap, g_fs.zone_bitmaps[zone_id], copy_len);
+    *out_bytes = zh.bitmap_bytes;
+    return 0;
+}
+
+int ufs_debug_get_superblock(struct ufs_superblock_debug *out_sb) {
+    if (!fs_mounted() || !out_sb) {
+        errno = EINVAL;
+        return -1;
+    }
+    out_sb->magic = g_fs.sb.magic;
+    out_sb->version = g_fs.sb.version;
+    out_sb->image_size = g_fs.sb.image_size;
+    out_sb->total_pages = g_fs.sb.total_pages;
+    out_sb->zone_count = g_fs.sb.zone_count;
+    out_sb->zone_size = g_fs.sb.zone_size;
+    out_sb->zone_header_pages = g_fs.sb.zone_header_pages;
+    out_sb->znode_table_pages = g_fs.sb.znode_table_pages;
+    out_sb->bitmap_pages = g_fs.sb.bitmap_pages;
+    out_sb->journal_start_page = g_fs.sb.journal_start_page;
+    out_sb->journal_pages = g_fs.sb.journal_pages;
+    out_sb->zones_start_page = g_fs.sb.zones_start_page;
+    out_sb->root_id = g_fs.sb.root_id;
+    out_sb->next_txid = g_fs.sb.next_txid;
+    out_sb->journal_head = g_fs.sb.journal_head;
+    out_sb->clean = g_fs.sb.clean;
+    out_sb->stored_checksum = g_fs.sb.checksum;
+    out_sb->calculated_checksum = checksum_superblock(&g_fs.sb);
+    out_sb->checksum_valid = (out_sb->stored_checksum == out_sb->calculated_checksum);
+    return 0;
+}
+
+int ufs_debug_get_raw_znode(const char *path, struct ufs_znode_raw_debug *out_zn) {
+    if (!fs_mounted() || !path || !out_zn) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    memset(out_zn, 0, sizeof(*out_zn));
+    out_zn->magic = zn.magic;
+    out_zn->version = zn.version;
+    out_zn->type = zn.type;
+    out_zn->flags = zn.flags;
+    out_zn->local_id = zn.local_id;
+    out_zn->link_count = zn.link_count;
+    out_zn->preferred_granularity = zn.preferred_granularity;
+    out_zn->extent_count = zn.extent_count;
+    out_zn->generation = zn.generation;
+    out_zn->size = zn.size;
+    out_zn->parent_id = zn.parent_id;
+    out_zn->extent_overflow_id = zn.extent_overflow_id;
+    out_zn->xattr_page_id = zn.xattr_page_id;
+    out_zn->mtime = zn.mtime;
+    out_zn->atime = zn.atime;
+    out_zn->ctime = zn.ctime;
+    memcpy(out_zn->raw_bytes, &zn, sizeof(zn));
+    return 0;
+}
+
+int ufs_debug_get_raw_xattrs(const char *path, struct ufs_xattr_raw_debug *entries, size_t max_entries, int *out_count, uint64_t *out_xattr_page_id) {
+    if (!fs_mounted() || !path || !entries || !out_count) {
+        errno = EINVAL;
+        return -1;
+    }
+    uint64_t id;
+    if (resolve_path(path, &id, NULL, NULL) < 0) return -1;
+    znode_disk_t zn;
+    if (read_znode(id, &zn) < 0) return -1;
+    if (out_xattr_page_id) *out_xattr_page_id = zn.xattr_page_id;
+    int cnt = 0;
+    uint64_t cur_page = zn.xattr_page_id;
+    while (cur_page != 0 && (size_t)cnt < max_entries) {
+        ufs_xattr_page_disk_t xp;
+        if (read_xattr_page(cur_page, &xp) < 0) break;
+        for (uint16_t i = 0; i < xp.count && (size_t)cnt < max_entries; i++) {
+            if (xp.entries[i].active) {
+                snprintf(entries[cnt].name, sizeof(entries[cnt].name), "%s", xp.entries[i].name);
+                snprintf(entries[cnt].value, sizeof(entries[cnt].value), "%s", xp.entries[i].value);
+                entries[cnt].value_len = xp.entries[i].value_len;
+                entries[cnt].active = xp.entries[i].active;
+                cnt++;
+            }
+        }
+        cur_page = xp.next_page_id;
+    }
+    *out_count = cnt;
+    return 0;
+}
+
+static void fsck_count_refs(uint64_t dir_id, uint32_t *ref_counts) {
+    znode_disk_t dir;
+    if (read_znode(dir_id, &dir) < 0 || dir.type != UFS_TYPE_DIR) return;
+    uint32_t slots = (uint32_t)(dir.size / sizeof(dir_disk_t));
+    for (uint32_t s = 0; s < slots; ++s) {
+        dir_disk_t de;
+        if (dir_read_entry(dir_id, s, &de) == 0 && de.active) {
+            uint32_t z = (uint32_t)(de.object_id >> 32);
+            uint32_t l = (uint32_t)(de.object_id & 0xFFFFFFFFu);
+            if (z < g_fs.sb.zone_count && l < UFS_ZNODE_SLOTS) {
+                ref_counts[z * UFS_ZNODE_SLOTS + l]++;
+                if (de.type == UFS_TYPE_DIR && strcmp(de.name, ".") != 0 && strcmp(de.name, "..") != 0) {
+                    fsck_count_refs(de.object_id, ref_counts);
+                }
+            }
+        }
+    }
+}
+
+int ufs_debug_fsck(struct ufs_fsck_stat *out_stat) {
+    if (!fs_mounted() || !out_stat) {
+        errno = EINVAL;
+        return -1;
+    }
+    memset(out_stat, 0, sizeof(*out_stat));
+    out_stat->superblock_ok = 1;
+    out_stat->clean_flag_ok = 1;
+    out_stat->root_dir_ok = 1;
+    out_stat->zone_headers_ok = 1;
+    out_stat->bitmap_crosscheck_ok = 1;
+    out_stat->link_counts_ok = 1;
+    out_stat->xattr_chains_ok = 1;
+
+    /* Phase 1: Superblock */
+    if (g_fs.sb.magic != UFS_MAGIC || g_fs.sb.version != UFS_VERSION) {
+        out_stat->superblock_ok = 0;
+        out_stat->errors++;
+    }
+
+    /* Phase 2: Clean state */
+    if (g_fs.sb.journal_head >= UFS_JOURNAL_RECORDS) {
+        out_stat->clean_flag_ok = 0;
+        out_stat->errors++;
+    }
+
+    /* Phase 3: Root directory */
+    znode_disk_t root;
+    if (read_znode(g_fs.sb.root_id, &root) < 0 || root.type != UFS_TYPE_DIR || root.magic != UFS_ZNODE_MAGIC) {
+        out_stat->root_dir_ok = 0;
+        out_stat->errors++;
+    }
+
+    /* Phase 4: Zone Headers */
+    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z) {
+        zone_header_disk_t zh;
+        if (read_zone_header(z, &zh) < 0 || zh.magic != UFS_ZONE_MAGIC || zh.zone_id != z) {
+            out_stat->zone_headers_ok = 0;
+            out_stat->errors++;
+        }
+    }
+
+    /* Phase 5 & 6: Bitmaps and Link counts */
+    uint32_t expected_refs[UFS_MAX_ZONES * UFS_ZNODE_SLOTS] = {0};
+    fsck_count_refs(g_fs.sb.root_id, expected_refs);
+
+    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z) {
+        load_zone_bitmap(z);
+        for (uint32_t s = 1; s < UFS_ZNODE_SLOTS; ++s) {
+            uint64_t id = make_object_id(z, s);
+            znode_disk_t zn;
+            if (read_znode(id, &zn) == 0 && zn.magic == UFS_ZNODE_MAGIC) {
+                if (zn.type == UFS_TYPE_DIR) out_stat->total_dirs++;
+                else out_stat->total_files++;
+
+                /* Check link count */
+                if (expected_refs[z * UFS_ZNODE_SLOTS + s] > 0 && expected_refs[z * UFS_ZNODE_SLOTS + s] != zn.link_count) {
+                    out_stat->link_mismatches++;
+                    out_stat->warnings++;
+                }
+
+                /* Check extents */
+                if (!(zn.flags & UFS_FLAG_INLINE)) {
+                    for (uint16_t e = 0; e < zn.extent_count && e < UFS_EXTENTS; ++e) {
+                        out_stat->total_extents++;
+                        out_stat->total_allocated_bytes += (uint64_t)zn.extents[e].physical_units * UFS_UNIT;
+                        uint16_t ez = zn.extents[e].zone_id;
+                        uint32_t eu = zn.extents[e].physical_unit;
+                        uint32_t ec = zn.extents[e].physical_units;
+                        if (ez < g_fs.sb.zone_count && g_fs.zone_bitmaps[ez]) {
+                            for (uint32_t u = eu; u < eu + ec; ++u) {
+                                if (!bit_get(g_fs.zone_bitmaps[ez], u)) {
+                                    out_stat->bitmap_crosscheck_ok = 0;
+                                    out_stat->errors++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (out_stat->link_mismatches > 0) {
+        out_stat->link_counts_ok = 0;
+    }
+
+    return 0;
+}
+
+int ufs_debug_get_system_overview(struct ufs_statfs *sb, uint64_t *total_used_bytes, uint32_t *file_count, uint32_t *dir_count, uint32_t *active_txs, uint32_t *cache_valid) {
+    if (!fs_mounted()) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (sb) ufs_statfs(sb);
+    uint64_t used = 0;
+    uint32_t files = 0, dirs = 0;
+    for (uint32_t z = 0; z < g_fs.sb.zone_count; ++z) {
+        load_zone_bitmap(z);
+        update_zone_summary(z);
+        uint32_t u = (g_fs.sb.zones[z].total_units >= g_fs.sb.zones[z].free_units) ? (g_fs.sb.zones[z].total_units - g_fs.sb.zones[z].free_units) : 0;
+        used += (uint64_t)u * UFS_UNIT;
+        for (uint32_t s = 1; s < UFS_ZNODE_SLOTS; ++s) {
+            znode_disk_t zn;
+            if (read_znode(make_object_id(z, s), &zn) == 0 && zn.magic == UFS_ZNODE_MAGIC) {
+                if (zn.type == UFS_TYPE_DIR) dirs++;
+                else files++;
+            }
+        }
+    }
+    if (total_used_bytes) *total_used_bytes = used;
+    if (file_count) *file_count = files;
+    if (dir_count) *dir_count = dirs;
+    if (active_txs) *active_txs = (uint32_t)g_fs.sb.next_txid;
+    if (cache_valid) {
+        uint32_t cv = 0;
+        for (size_t i = 0; i < UFS_HOT_ENTRIES; ++i) {
+            if (g_fs.hot[i].valid) cv++;
+        }
+        *cache_valid = cv;
+    }
+    return 0;
+}
+

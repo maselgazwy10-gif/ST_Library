@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraFS Architecture & Allocation Engine — Interactive Visualizer</title>
+    
+    <!-- Retro Fonts & Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+
+    <style>
+        :root {
+            --ut-black: #000000;
+            --ut-white: #ffffff;
+            --ut-yellow: #ffff00;
+            --ut-red: #ff0000;
+            --ut-cyan: #00ffff;
+            --ut-green: #50fa7b;
+            --ut-purple: #bd93f9;
+            --ut-orange: #ffb86c;
+            --ut-gold: #ffd700;
+            --ut-panel-bg: #0a0a14;
+            --ut-border: #ffffff;
+            --font-pixel: 'Press Start 2P', monospace;
+            --font-retro: 'VT323', monospace;
+            --font-code: 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--ut-black);
+            color: var(--ut-white);
+            font-family: var(--font-retro);
+            font-size: 19px;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(30, 20, 60, 0.4) 0%, transparent 60%),
+                radial-gradient(circle at 80% 70%, rgba(10, 40, 60, 0.4) 0%, transparent 60%);
+        }
+
+        /* --------------------------------------------------------------------------
+           Undertale Pixel Borders & Panels
+           -------------------------------------------------------------------------- */
+        .ut-box {
+            background-color: var(--ut-panel-bg);
+            border: 4px solid var(--ut-border);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.15), inset 0 0 10px rgba(0, 0, 0, 0.8);
+            position: relative;
+        }
+
+        .ut-box::before {
+            content: '';
+            position: absolute;
+            top: -4px; left: -4px; right: -4px; bottom: -4px;
+            border: 2px solid #000;
+            pointer-events: none;
+        }
+
+        .ut-box-cyan {
+            border-color: var(--ut-cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .ut-box-yellow {
+            border-color: var(--ut-yellow);
+            box-shadow: 0 0 15px rgba(255, 255, 0, 0.3);
+        }
+
+        .ut-box-green {
+            border-color: var(--ut-green);
+            box-shadow: 0 0 15px rgba(80, 250, 123, 0.3);
+        }
+
+        .ut-box-purple {
+            border-color: var(--ut-purple);
+            box-shadow: 0 0 15px rgba(189, 147, 249, 0.3);
+        }
+
+        .ut-box-orange {
+            border-color: var(--ut-orange);
+            box-shadow: 0 0 15px rgba(255, 184, 108, 0.3);
+        }
+
+        /* --------------------------------------------------------------------------
+           CRT Filter & Scanlines
+           -------------------------------------------------------------------------- */
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.85;
+        }
+
+        body.no-crt .crt-overlay { display: none; }
+
+        /* --------------------------------------------------------------------------
+           Pixel Soul Heart & Stars
+           -------------------------------------------------------------------------- */
+        .pixel-heart {
+            display: inline-block;
+            width: 14px; height: 14px;
+            background-color: var(--ut-red);
+            clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 50% 75%, 18% 100%, 0% 35%);
+            filter: drop-shadow(0 0 4px #ff0000);
+            animation: soulPulse 1.2s infinite alternate;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        .pixel-heart-yellow { background-color: var(--ut-yellow); filter: drop-shadow(0 0 4px #ffff00); }
+        .pixel-heart-cyan { background-color: var(--ut-cyan); filter: drop-shadow(0 0 4px #00ffff); }
+        .pixel-heart-green { background-color: var(--ut-green); filter: drop-shadow(0 0 4px #50fa7b); }
+
+        @keyframes soulPulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.18); filter: drop-shadow(0 0 8px currentColor); }
+        }
+
+        /* --------------------------------------------------------------------------
+           Navigation Tabs & Buttons
+           -------------------------------------------------------------------------- */
+        .tab-btn {
+            font-family: var(--font-pixel);
+            font-size: 10px;
+            padding: 8px 14px;
+            background: #000;
+            color: #888;
+            border: 2px solid #555;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            border-color: #aaa;
+            background: #111;
+        }
+
+        .tab-btn.active {
+            color: var(--ut-yellow);
+            border-color: var(--ut-yellow);
+            background: #1a1a00;
+            box-shadow: 0 0 10px rgba(255, 255, 0, 0.4);
+        }
+
+        .scenario-pill {
+            font-family: var(--font-pixel);
+            font-size: 9px;
+            padding: 6px 12px;
+            background: #111;
+            color: #aaa;
+            border: 2px solid #444;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .scenario-pill:hover {
+            color: #fff;
+            border-color: var(--ut-cyan);
+            background: #002222;
+        }
+
+        .scenario-pill.active {
+            color: #000;
+            background: var(--ut-cyan);
+            border-color: #fff;
+            box-shadow: 0 0 12px var(--ut-cyan);
+            font-weight: bold;
+        }
+
+        .ut-btn {
+            font-family: var(--font-pixel);
+            font-size: 10px;
+            padding: 7px 14px;
+            background: #000;
+            color: #fff;
+            border: 3px solid #fff;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ut-btn:hover:not(:disabled) {
+            background: var(--ut-yellow);
+            color: #000;
+            border-color: var(--ut-yellow);
+            box-shadow: 0 0 12px var(--ut-yellow);
+            transform: scale(1.04);
+        }
+
+        .ut-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* --------------------------------------------------------------------------
+           Canvas & Visual Grids
+           -------------------------------------------------------------------------- */
+        .disk-unit {
+            aspect-ratio: 1;
+            background: #1a1a24;
+            border: 1px solid #333;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-code);
+            font-size: 9px;
+            color: #555;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .disk-unit.used { background: #3a3a4c; color: #888; }
+        .disk-unit.active-unit { 
+            background: var(--ut-green); 
+            color: #000; 
+            font-weight: bold; 
+            box-shadow: 0 0 12px var(--ut-green); 
+            border-color: #fff;
+            z-index: 5;
+        }
+        .disk-unit.scanning { 
+            background: var(--ut-yellow); 
+            color: #000; 
+            box-shadow: 0 0 10px var(--ut-yellow); 
+            transform: scale(1.12); 
+            z-index: 10;
+        }
+        .disk-unit.coalescing {
+            animation: pulseGlow 0.4s infinite alternate;
+            background: var(--ut-gold);
+            color: #000;
+            font-weight: bold;
+        }
+        .disk-unit.compressed {
+            background: var(--ut-purple);
+            color: #fff;
+            box-shadow: 0 0 10px var(--ut-purple);
+        }
+        .disk-unit.cursor-mark {
+            border: 2px dashed var(--ut-cyan);
+        }
+
+        @keyframes pulseGlow {
+            0% { transform: scale(1); box-shadow: 0 0 6px var(--ut-gold); }
+            100% { transform: scale(1.15); box-shadow: 0 0 18px var(--ut-gold); }
+        }
+
+        /* --------------------------------------------------------------------------
+           Pixel Data Runner Character (The Little Data Monster!)
+           -------------------------------------------------------------------------- */
+        .data-runner {
+            position: absolute;
+            width: 32px;
+            height: 38px;
+            z-index: 100;
+            pointer-events: none;
+            transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .data-runner-body {
+            width: 24px;
+            height: 22px;
+            background: var(--ut-cyan);
+            border: 2px solid #fff;
+            border-radius: 4px;
+            position: relative;
+            box-shadow: 0 0 10px var(--ut-cyan);
+            animation: runnerBounce 0.2s infinite alternate;
+        }
+
+        .data-runner-eyes {
+            position: absolute;
+            top: 4px; left: 4px; right: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .data-runner-eye {
+            width: 4px; height: 6px;
+            background: #000;
+            border-radius: 1px;
+        }
+
+        .data-runner-feet {
+            display: flex;
+            justify-content: space-between;
+            width: 20px;
+            margin-top: 1px;
+        }
+
+        .data-runner-foot {
+            width: 6px; height: 5px;
+            background: var(--ut-yellow);
+            border: 1px solid #000;
+            animation: runnerLegs 0.2s infinite alternate;
+        }
+        .data-runner-foot:last-child { animation-delay: 0.1s; }
+
+        .data-runner-tag {
+            font-family: var(--font-pixel);
+            font-size: 7px;
+            background: #000;
+            color: var(--ut-yellow);
+            border: 1px solid var(--ut-yellow);
+            padding: 1px 3px;
+            border-radius: 2px;
+            white-space: nowrap;
+            margin-top: -32px;
+            margin-bottom: 4px;
+        }
+
+        @keyframes runnerBounce {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-3px); }
+        }
+
+        @keyframes runnerLegs {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(3px); }
+        }
+
+        /* --------------------------------------------------------------------------
+           Mustache Extent Boss Character (Sir Extent / Lord Coalesce!)
+           -------------------------------------------------------------------------- */
+        .mustache-boss {
+            position: absolute;
+            top: -42px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 50;
+            transition: all 0.4s ease;
+            pointer-events: none;
+        }
+
+        .mustache-boss-hat {
+            width: 16px; height: 10px;
+            background: #111;
+            border: 2px solid #fff;
+            border-bottom: none;
+            position: relative;
+        }
+        .mustache-boss-hat::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; left: -5px; width: 26px; height: 3px;
+            background: var(--ut-gold);
+            border: 1px solid #000;
+        }
+
+        .mustache-boss-head {
+            width: 26px; height: 20px;
+            background: #ffdbac;
+            border: 2px solid #000;
+            border-radius: 4px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        }
+
+        .mustache-boss-eyes {
+            display: flex;
+            gap: 6px;
+            margin-top: -2px;
+        }
+        .mustache-boss-eye {
+            width: 4px; height: 4px;
+            background: #000;
+            border-radius: 50%;
+        }
+
+        /* Iconic Handlebar Mustache! */
+        .mustache-boss-mustache {
+            width: 22px; height: 6px;
+            background: #4a2700;
+            border: 1px solid #000;
+            border-radius: 4px 4px 8px 8px;
+            margin-top: 2px;
+            position: relative;
+            animation: mustacheTwitch 1.5s infinite alternate ease-in-out;
+        }
+
+        .mustache-boss-mustache::before, .mustache-boss-mustache::after {
+            content: '';
+            position: absolute;
+            top: -2px; width: 6px; height: 6px;
+            background: #4a2700;
+            border: 1px solid #000;
+            border-radius: 50%;
+        }
+        .mustache-boss-mustache::before { left: -4px; }
+        .mustache-boss-mustache::after { right: -4px; }
+
+        @keyframes mustacheTwitch {
+            0% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.08) rotate(-2deg); }
+            100% { transform: scale(1.08) rotate(2deg); }
+        }
+
+        .mustache-boss-banner {
+            font-family: var(--font-pixel);
+            font-size: 7px;
+            background: #000;
+            color: var(--ut-gold);
+            border: 1px solid var(--ut-gold);
+            padding: 2px 4px;
+            border-radius: 2px;
+            white-space: nowrap;
+            margin-top: 2px;
+            box-shadow: 0 0 6px var(--ut-gold);
+        }
+
+        /* --------------------------------------------------------------------------
+           Struct Inspector Popover / Tables
+           -------------------------------------------------------------------------- */
+        .struct-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-code);
+            font-size: 11px;
+        }
+
+        .struct-table th {
+            font-family: var(--font-pixel);
+            font-size: 8px;
+            background: #111;
+            color: var(--ut-yellow);
+            padding: 6px;
+            border: 1px solid #444;
+            text-align: left;
+        }
+
+        .struct-table td {
+            padding: 4px 6px;
+            border: 1px solid #2a2a3a;
+            color: #ccc;
+        }
+
+        .struct-table tr:hover td {
+            background: #1f1f33;
+            color: #fff;
+        }
+
+        .byte-pill {
+            font-family: var(--font-pixel);
+            font-size: 7px;
+            padding: 1px 4px;
+            border-radius: 2px;
+            border: 1px solid currentColor;
+            display: inline-block;
+        }
+
+        /* --------------------------------------------------------------------------
+           Console Log Window
+           -------------------------------------------------------------------------- */
+        .log-entry {
+            font-family: var(--font-code);
+            font-size: 12px;
+            line-height: 1.4;
+            padding: 2px 0;
+            border-bottom: 1px dashed #222;
+        }
+        .log-entry .ts { color: #666; margin-right: 6px; font-size: 10px; }
+        .log-entry.aura { color: var(--ut-green); }
+        .log-entry.fat { color: #ff6b6b; }
+        .log-entry.sys { color: var(--ut-yellow); font-weight: bold; }
+        .log-entry.boss { color: var(--ut-gold); font-weight: bold; }
+
+        /* --------------------------------------------------------------------------
+           Encounter Flash & Screen Shake
+           -------------------------------------------------------------------------- */
+        .battle-flash {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #fff;
+            z-index: 10000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.12s ease-out;
+        }
+        .battle-flash.active { opacity: 0.9; }
+
+        .screen-shake {
+            animation: shake 0.28s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(3px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-5px, 0, 0); }
+            40%, 60% { transform: translate3d(5px, 0, 0); }
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a14; }
+        ::-webkit-scrollbar-thumb { background: #444; border: 1px solid #222; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--ut-yellow); }
+    </style>
+</head>
+<body>
+
+    <!-- CRT Filter -->
+    <div class="crt-overlay"></div>
+
+    <!-- Battle Encounter Flash -->
+    <div class="battle-flash" id="battle-flash"></div>
+
+    <!-- Animated Data Runner Sprite Layer -->
+    <div id="runner-layer" style="position: absolute; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:200;"></div>
+
+    <!-- Top Header: Undertale HUD & Chapter Tabs -->
+    <header class="bg-[#05050c] border-b-4 border-white px-4 py-2 flex items-center justify-between shrink-0 overflow-x-auto gap-4">
+        <div class="flex items-center gap-3 shrink-0">
+            <span class="pixel-heart"></span>
+            <span class="font-bold text-sm tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-yellow);">AURAFS</span>
+            <span class="text-xs text-gray-400 font-mono">VS FAT32 ARCHITECTURE THEATER</span>
+        </div>
+
+        <!-- Master Tabs -->
+        <div class="flex gap-2" id="main-tabs">
+            <button class="tab-btn active" data-tab="1">1. DISK LAYOUT & STRUCTS</button>
+            <button class="tab-btn" data-tab="2">2. FREE SPACE & SCANNER</button>
+            <button class="tab-btn" data-tab="3">3. ALLOCATION THEATER (ACT 1-3)</button>
+            <button class="tab-btn" data-tab="4">4. NAMESPACE & HOT CACHE</button>
+            <button class="tab-btn" data-tab="5">5. DELTA JOURNAL & RECOVERY</button>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="flex items-center gap-2 shrink-0">
+            <button class="ut-btn" id="btn-play">
+                <span style="color: var(--ut-green);">▶</span> PLAY
+            </button>
+            <button class="ut-btn" id="btn-step" title="Step Forward 1 Action">
+                <span>⏭</span> STEP
+            </button>
+            <button class="ut-btn" id="btn-reset" title="Reset Scenario State">
+                <span>↺</span> RESET
+            </button>
+            <button class="ut-btn" id="btn-sound" title="Toggle 8-bit Audio">
+                <span>🔊</span> SOUND
+            </button>
+            <button class="ut-btn" id="btn-crt" title="Toggle CRT Filter">
+                CRT
+            </button>
+        </div>
+    </header>
+
+    <!-- Sub-Scenario Pill Bar -->
+    <div class="bg-[#0e0e1a] border-b-2 border-[#444] px-4 py-2 flex items-center gap-2 overflow-x-auto shrink-0" id="scenario-nav">
+        <!-- Injected via JavaScript -->
+    </div>
+
+    <!-- Main Visual Stage -->
+    <main class="flex-1 flex overflow-hidden p-3 gap-3">
+        
+        <!-- Left 2/3: Live Battle Arena / Visualizer -->
+        <div class="w-7/12 flex flex-col gap-3">
+            
+            <!-- Dual Visual Panels (FAT32 vs AuraFS) -->
+            <div class="flex-1 flex gap-3 overflow-hidden">
+                
+                <!-- FAT32 Panel (Legacy) -->
+                <div class="ut-box flex-1 flex flex-col p-3 overflow-hidden border-[#ff5555]">
+                    <div class="flex items-center justify-between border-b-2 border-[#ff5555] pb-1 mb-2">
+                        <span class="font-bold text-xs" style="font-family: var(--font-pixel); color: #ff5555;">❄️ FAT32 (LEGACY)</span>
+                        <span class="text-xs text-gray-400 font-mono" id="fat-status">Cluster Map</span>
+                    </div>
+                    <div class="flex-1 relative overflow-auto p-1" id="fat-stage">
+                        <!-- FAT32 Visual Elements -->
+                    </div>
+                </div>
+
+                <!-- AuraFS Panel (Modern Zoned Extent Engine) -->
+                <div class="ut-box ut-box-cyan flex-1 flex flex-col p-3 overflow-hidden relative">
+                    <div class="flex items-center justify-between border-b-2 border-[#00ffff] pb-1 mb-2">
+                        <span class="font-bold text-xs" style="font-family: var(--font-pixel); color: var(--ut-cyan);">🔥 AURAFS (ZONED EXTENTS)</span>
+                        <span class="text-xs text-gray-400 font-mono" id="aura-status">Zone & Z-Node Engine</span>
+                    </div>
+                    <div class="flex-1 relative overflow-auto p-1" id="aura-stage">
+                        <!-- AuraFS Visual Elements & Mustache Bosses -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Console Log (Undertale Dialogue Box Style) -->
+            <div class="h-44 ut-box ut-box-yellow p-3 flex flex-col shrink-0">
+                <div class="flex justify-between items-center border-b border-[#444] pb-1 mb-1">
+                    <div class="text-xs font-bold" style="font-family: var(--font-pixel); color: var(--ut-yellow);">
+                        <span class="pixel-heart pixel-heart-yellow"></span> SYSTEM EXECUTION TRACE & STATS
+                    </div>
+                    <span class="text-[11px] text-gray-400 font-mono">60 FPS Hardware Simulator</span>
+                </div>
+                <div class="flex-1 overflow-y-auto" id="console-log">
+                    <!-- Live Logs Injected -->
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right 5/12: Interactive Struct Inspector & Live Code View -->
+        <div class="w-5/12 flex flex-col gap-3">
+            
+            <!-- Top: Dynamic Struct Inspector / Data Map Table -->
+            <div class="flex-1 ut-box ut-box-purple p-3 flex flex-col overflow-hidden">
+                <div class="flex justify-between items-center border-b-2 border-[#bd93f9] pb-1 mb-2">
+                    <div class="text-xs font-bold" style="font-family: var(--font-pixel); color: var(--ut-purple);">
+                        ★ ON-DISK STRUCT INSPECTOR
+                    </div>
+                    <span class="text-xs text-yellow-300 font-mono" id="struct-target-name">superblock_disk_t</span>
+                </div>
+                <div class="flex-1 overflow-y-auto" id="struct-inspector-body">
+                    <!-- Interactive struct tables injected on hover/click -->
+                </div>
+            </div>
+
+            <!-- Bottom: Live C-Code Snippet -->
+            <div class="h-44 ut-box ut-box-green p-3 flex flex-col shrink-0 overflow-hidden">
+                <div class="flex justify-between items-center border-b border-[#444] pb-1 mb-1">
+                    <span class="text-xs font-bold" style="font-family: var(--font-pixel); color: var(--ut-green);">C KERNEL ROUTINE</span>
+                    <span class="text-xs text-cyan-300 font-mono" id="code-filename">userfs.c</span>
+                </div>
+                <div class="flex-1 overflow-auto bg-[#05050a] p-2 rounded">
+                    <pre><code class="language-c" id="code-snippet">/* AuraFS Kernel Routine */</code></pre>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Bottom Undertale Battle HUD -->
+    <footer class="bg-[#000] border-t-4 border-white px-4 py-1.5 flex items-center justify-between shrink-0 font-mono text-xs">
+        <div class="flex items-center gap-4">
+            <span class="font-bold" style="font-family: var(--font-pixel); color: var(--ut-red);"><span class="pixel-heart"></span> AURA</span>
+            <span class="font-bold text-yellow-300" style="font-family: var(--font-pixel);" id="hud-lv">LV 19</span>
+            <div class="flex items-center gap-2">
+                <span style="font-family: var(--font-pixel); font-size: 9px;">HP</span>
+                <div class="w-36 h-3 bg-[#333] border border-white">
+                    <div class="h-full bg-yellow-400" id="hud-hp-bar" style="width: 100%;"></div>
+                </div>
+                <span style="font-family: var(--font-pixel); font-size: 9px;" id="hud-hp-text">99/99</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-gray-400" id="hud-info">Ready to Simulate</span>
+            <span class="text-yellow-400" style="font-family: var(--font-pixel); font-size: 8px;">[PRESS SPACE / PLAY]</span>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-c.min.js"></script>
+
+    <!-- Visualizer Engine Script -->
+    <script>
+        // --- 8-BIT SOUND SYNTHESIZER ---
+        class RetroAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AC();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playTone(freq, type='square', duration=0.08, vol=0.3) {
+                if (this.muted) return;
+                this.init();
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + duration);
+                } catch(e) {}
+            }
+            blip() { this.playTone(280 + Math.random()*80, 'square', 0.05, 0.25); }
+            step() { this.playTone(180, 'triangle', 0.04, 0.2); }
+            jump() {
+                if (this.muted) return;
+                this.init();
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(260, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.13);
+                } catch(e) {}
+            }
+            coalesceFanfare() {
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((n, i) => {
+                    setTimeout(() => this.playTone(n, 'square', 0.12, 0.35), i * 70);
+                });
+            }
+            battle() {
+                this.playTone(150, 'sawtooth', 0.25, 0.4);
+            }
+        }
+
+        const audio = new RetroAudio();
+
+        // --- SCENARIO DEFINITIONS ---
+        const SCENARIOS = {
+            1: [
+                { id: '1A', name: '1A: 32MB Disk Map & Struct Inspector', codeFile: 'userfs.h' },
+                { id: '1B', name: '1B: Locality Domains & Home Zone Affinity', codeFile: 'userfs.c' }
+            ],
+            2: [
+                { id: '2A', name: '2A: Global Heatmap (RAM O(1) Search)', codeFile: 'userfs.c' },
+                { id: '2B', name: '2B: 64-Bit Bitwise Scanner & tzcnt', codeFile: 'userfs.c' },
+                { id: '2C', name: '2C: Flash Wear-Leveling & Roving Cursors', codeFile: 'userfs.c' }
+            ],
+            3: [
+                { id: '3A', name: '3A: Multi-Granularity (512B / 4K / 16K)', codeFile: 'userfs.c' },
+                { id: '3B', name: '3B: Zero-I/O Slack Reuse (In-Place Growth)', codeFile: 'userfs.c' },
+                { id: '3C', name: '3C: In-Place Tail Extension & Coalescing (Mustache Merge!)', codeFile: 'userfs.c' },
+                { id: '3D', name: '3D: Dynamic Promotion to 16 KiB Extents', codeFile: 'userfs.c' },
+                { id: '3E', name: '3E: Multi-Extent Fallback across Holes', codeFile: 'userfs.c' },
+                { id: '3F', name: '3F: Tier-0 Inline Z-Node Data (<= 384 B)', codeFile: 'userfs.c' },
+                { id: '3G', name: '3G: Inline Ejection & Spillover (> 384 B)', codeFile: 'userfs.c' },
+                { id: '3H', name: '3H: Extended Attributes (xattrs) & MIME Indexing', codeFile: 'userfs.c' },
+                { id: '3I', name: '3I: Transparent Per-Extent LZ4 Compression', codeFile: 'userfs.c' },
+                { id: '3J', name: '3J: Cross-Zone Z-Node Spillover (Compound 64-bit ID)', codeFile: 'userfs.c' },
+                { id: '3K', name: '3K: Chained Indirect Extent Overflow Page', codeFile: 'userfs.c' }
+            ],
+            4: [
+                { id: '4A', name: '4A: Hot Directory Cache (FNV-1a 0ms Hit)', codeFile: 'userfs.c' },
+                { id: '4B', name: '4B: Random Access Seek (Direct Extent Math)', codeFile: 'userfs.c' }
+            ],
+            5: [
+                { id: '5A', name: '5A: Atomic 4KB Delta Journal & XOR Delta', codeFile: 'userfs.c' },
+                { id: '5B', name: '5B: Power Loss Simulation & 2ms Instant Replay', codeFile: 'userfs.c' }
+            ]
+        };
+
+        // --- C CODE SNIPPETS ---
+        const SNIPPETS = {
+            '1A': `// 4,096-Byte Superblock at Page 0
+typedef struct __attribute__((packed)) {
+    uint32_t magic;              // 0x55465332 ("UFS2")
+    uint32_t version;            // 2
+    uint32_t image_size;         // 33,554,432 B (32 MB)
+    uint32_t total_pages;        // 8,192 pages
+    uint32_t zone_count;         // 32 zones
+    uint32_t zone_size;          // 1,048,576 B (1 MB)
+    uint32_t zones_start_page;   // Page 513
+    uint64_t root_id;            // 0x0000000000000001
+    uint64_t next_txid;          // Monotonic Transaction ID
+    uint32_t clean;              // 1 = Clean, 0 = Dirty
+    uint32_t checksum;           // FNV-1a checksum
+    zone_summary_disk_t zones[32]; // 768 B Global Heatmap in RAM
+} superblock_disk_t;`,
+
+            '1B': `// Home Zone Affinity: keep metadata + data in same neighborhood
+uint32_t home_zone = (uint32_t)(parent_id >> 32);
+// 1. Allocate Z-Node in home_zone
+allocate_znode_in_zone(home_zone, &znode_id);
+// 2. Allocate data blocks in same home_zone
+allocate_physical_region(home_zone, needed_units, &start_unit);`,
+
+            '2A': `// Global Zone Summary Table (RAM Heatmap)
+uint32_t choose_zone_for_allocation(uint32_t needed_units) {
+    for (uint32_t i = 0; i < g_fs.sb.zone_count; i++) {
+        // O(1) check in RAM — NO DISK I/O!
+        if (g_fs.sb.zones[i].largest_free_run >= needed_units) {
+            return i; // Instant target!
+        }
+    }
+    return -1; // Fallback to partial multi-extent
+}`,
+
+            '2B': `// Fast 64-Bit Bitwise Scanner with hardware tzcnt
+uint64_t *words = (uint64_t*)bitmap;
+for (uint32_t w = 0; w < num_words; w++) {
+    if (words[w] == UINT64_MAX) continue; // Skip 64 units (32KB) in 1 cycle!
+    uint64_t free_bits = ~words[w];
+    int bit_idx = __builtin_ctzll(free_bits); // 1-cycle hardware bit scan!
+    return (w * 64) + bit_idx;
+}`,
+
+            '2C': `// Flash Wear-Leveling via Roving Next-Fit Cursor
+uint32_t start_unit = g_zone_cursors[zone];
+for (uint32_t step = 0; step < total_units; step++) {
+    uint32_t u = (start_unit + step) % total_units;
+    if (check_free_run(zone, u, needed)) {
+        g_zone_cursors[zone] = (u + needed) % total_units; // Bookmark cursor
+        return u;
+    }
+}`,
+
+            '3A': `// Multi-Granularity Sizing
+if (size <= 512) {
+    granularity = UFS_SMALL_GRAN;  // 512 B (1 unit)
+} else if (size <= 4096) {
+    granularity = UFS_MEDIUM_GRAN; // 4 KiB (8 units)
+} else {
+    granularity = UFS_LARGE_GRAN;  // 16 KiB (32 units)
+}`,
+
+            '3B': `// Zero-I/O Slack Reuse
+if (needed_size <= current_allocated_slack) {
+    // Simply expand logical_length inside existing physical extent!
+    zn->size = needed_size;
+    zn->extents[last].logical_length = needed_size;
+    // 0 disk writes! 0 bitmap updates! Instant O(1)!
+    return 0;
+}`,
+
+            '3C': `// In-Place Tail Extension & Adjacent Extent Coalescing
+if (is_adjacent_free(zone, last_unit + last_units, append_units)) {
+    // Expand previous extent in place!
+    zn->extents[last].physical_units += append_units;
+    zn->extents[last].logical_length += append_bytes;
+    // Coalesces into 1 single continuous Extent Boss!
+    return 0;
+}`,
+
+            '3D': `// Dynamic Promotion to 16 KiB
+if (zn->size > 4096) {
+    // Automatically upgrade growth allocations to 16 KiB runs
+    preferred_granularity = UFS_LARGE_GRAN; // 32 units / 16KB
+}`,
+
+            '3E': `// Multi-Extent Fallback across Holes
+while (remaining_bytes > 0) {
+    uint32_t run = find_largest_available_run(zone);
+    mapping_add(zn, offset, run * 512, zone, run);
+    remaining_bytes -= (run * 512);
+}`,
+
+            '3F': `// Tier-0 Inline Z-Node Data (<= 384 B)
+if (size <= UFS_MAX_INLINE_BYTES) {
+    zn->flags |= UFS_FLAG_INLINE;
+    memcpy(zn->inline_data, buffer, size);
+    zn->size = size;
+    // 0 physical data blocks allocated! 0% slack!
+    return 0;
+}`,
+
+            '3G': `// Inline Spillover / Ejection
+void spill_inline_to_extents(uint64_t object_id, znode_disk_t *zn, uint64_t new_size) {
+    char backup[384];
+    memcpy(backup, zn->inline_data, zn->size);
+    zn->flags &= ~UFS_FLAG_INLINE;
+    allocate_extents(zn, new_size);
+    write_extent_bytes(zn, 0, backup, zn->size);
+}`,
+
+            '3H': `// Extended Attributes (xattrs)
+ufs_xattr_page_disk_t xp;
+xp.entries[0].key = "user.mime_type";
+xp.entries[0].val = "application/json";
+write_xattr_page(zn->xattr_page_id, &xp);
+// 0 data reads to detect file type!`,
+
+            '3I': `// Transparent Per-Extent LZ4 Compression
+int comp_size = LZ4_compress_default(raw_4k, comp_buf, 4096, 4096);
+if (comp_size <= 512) {
+    ext->granularity = UFS_FLAG_COMPRESSED_LZ4;
+    ext->logical_length = 4096; // Logical view
+    ext->physical_units = 1;    // Physical storage (512 B) -> 87.5% SAVINGS!
+}`,
+
+            '3J': `// Dynamic Cross-Zone Z-Node Spillover
+if (g_fs.sb.zones[home_zone].znode_used >= UFS_ZNODE_SLOTS) {
+    // Spill over to adjacent zone!
+    uint32_t next_zone = (home_zone + 1) % g_fs.sb.zone_count;
+    uint64_t new_id = make_object_id(next_zone, free_slot);
+    // Compound ID: (3 << 32) | 1 -> Scales to billions of files!
+}`,
+
+            '3K': `// Chained Indirect Extent Overflow Page
+if (zn->extent_count >= 16) {
+    if (zn->extent_overflow_id == 0) {
+        allocate_extent_page(home_zone, &zn->extent_overflow_id);
+    }
+    append_extent_to_page(zn->extent_overflow_id, new_extent);
+}`,
+
+            '4A': `// Hot Directory Cache
+uint64_t hash = fnv1a64(name);
+for (int i = 0; i < UFS_HOT_ENTRIES; i++) {
+    if (g_hot_cache[i].dir_id == parent && g_hot_cache[i].hash == hash) {
+        return g_hot_cache[i].object_id; // INSTANT 0ms HIT!
+    }
+}`,
+
+            '4B': `// O(1) Extent Math Address Jump
+uint64_t inside = file_offset - ext->logical_start;
+uint64_t phys_byte = Zone_Base(ext->zone_id) + (ext->physical_unit * 512) + inside;
+// Direct pointer arithmetic jump! 0 block table seeks!`,
+
+            '5A': `// Atomic 4KB Delta Journal Record
+journal_record_disk_t rec;
+rec.magic = UFS_JOURNAL_MAGIC;
+rec.txid = ++g_fs.sb.next_txid;
+rec.type = JOP_SET_ZNODE;
+rec.znode = *new_zn_snapshot;
+disk_write_page(journal_page, &rec); // Atomic 4KB sector write!`,
+
+            '5B': `// Instant 2ms Journal Replay Recovery
+if (sb.clean == 0) {
+    while (has_record(head)) {
+        if (rec.type == JOP_SET_ZNODE && is_committed(rec.txid)) {
+            write_znode(rec.object_id, &rec.znode); // Replay in 2ms!
+        }
+    }
+}`
+        };
+
+        // --- STRUCT DEFINITION METADATA (FOR HOVER INSPECTOR) ---
+        const STRUCT_DEFS = {
+            'superblock_disk_t': {
+                name: 'superblock_disk_t (4,096 Bytes / Page 0)',
+                fields: [
+                    { name: 'magic', type: 'uint32_t', size: '4 B', offset: '0x00..0x03', desc: '0x55465332 ("UFS2" signature)' },
+                    { name: 'version', type: 'uint32_t', size: '4 B', offset: '0x04..0x07', desc: 'Layout version (2)' },
+                    { name: 'image_size', type: 'uint32_t', size: '4 B', offset: '0x08..0x0B', desc: '33,554,432 B (32 MB virtual disk)' },
+                    { name: 'total_pages', type: 'uint32_t', size: '4 B', offset: '0x0C..0x0F', desc: '8,192 pages @ 4096 B' },
+                    { name: 'zone_count', type: 'uint32_t', size: '4 B', offset: '0x10..0x13', desc: '32 autonomous zones' },
+                    { name: 'zone_size', type: 'uint32_t', size: '4 B', offset: '0x14..0x17', desc: '1,048,576 B (1 MB per zone)' },
+                    { name: 'journal_start', type: 'uint32_t', size: '4 B', offset: '0x24..0x27', desc: 'Page 1 (2 MB ring buffer)' },
+                    { name: 'zones_start', type: 'uint32_t', size: '4 B', offset: '0x30..0x33', desc: 'Page 513 (Zone 0 start)' },
+                    { name: 'root_id', type: 'uint64_t', size: '8 B', offset: '0x34..0x3B', desc: '0x0000000000000001 (Root dir)' },
+                    { name: 'next_txid', type: 'uint64_t', size: '8 B', offset: '0x3C..0x43', desc: 'Monotonic Transaction ID' },
+                    { name: 'clean', type: 'uint32_t', size: '4 B', offset: '0x44..0x47', desc: '1 = Clean, 0 = Dirty/Crashed' },
+                    { name: 'checksum', type: 'uint32_t', size: '4 B', offset: '0x48..0x4B', desc: 'FNV-1a verification hash' },
+                    { name: 'zones[32]', type: 'zone_summary_disk_t[32]', size: '768 B', offset: '0x4C..0x34B', desc: 'Global Zone Heatmap in RAM' },
+                    { name: 'padding[]', type: 'uint8_t[3252]', size: '3,252 B', offset: '0x34C..0xFFF', desc: 'Sector alignment padding' }
+                ]
+            },
+            'zone_header_disk_t': {
+                name: 'zone_header_disk_t (4,096 Bytes / Page 0 of Zone)',
+                fields: [
+                    { name: 'magic', type: 'uint32_t', size: '4 B', offset: '0x00..0x03', desc: '0x5A4F4E45 ("ZONE" signature)' },
+                    { name: 'version', type: 'uint32_t', size: '4 B', offset: '0x04..0x07', desc: 'Format version (2)' },
+                    { name: 'zone_id', type: 'uint32_t', size: '4 B', offset: '0x08..0x0B', desc: 'Zone index (0..31)' },
+                    { name: 'total_units', type: 'uint32_t', size: '4 B', offset: '0x0C..0x0F', desc: '2,048 units @ 512 B' },
+                    { name: 'data_first_unit', type: 'uint32_t', size: '4 B', offset: '0x10..0x13', desc: 'Unit where payload begins' },
+                    { name: 'bitmap_bytes', type: 'uint32_t', size: '4 B', offset: '0x14..0x17', desc: '256 B allocation bitmap' },
+                    { name: 'znode_slots', type: 'uint32_t', size: '4 B', offset: '0x18..0x1B', desc: '32 Z-Node slots (4 pages)' },
+                    { name: 'flags', type: 'uint32_t', size: '4 B', offset: '0x1C..0x1F', desc: 'Zone capability bits' },
+                    { name: 'padding[]', type: 'uint8_t[4064]', size: '4,064 B', offset: '0x20..0xFFF', desc: '4KB page alignment' }
+                ]
+            },
+            'zone_summary_disk_t': {
+                name: 'zone_summary_disk_t (24 Bytes per Zone)',
+                fields: [
+                    { name: 'zone_id', type: 'uint32_t', size: '4 B', offset: '0x00..0x03', desc: 'Target zone index' },
+                    { name: 'free_units', type: 'uint32_t', size: '4 B', offset: '0x04..0x07', desc: 'Total unallocated 512B units' },
+                    { name: 'largest_free_run', type: 'uint32_t', size: '4 B', offset: '0x08..0x0B', desc: 'Max contiguous run length' },
+                    { name: 'total_units', type: 'uint32_t', size: '4 B', offset: '0x0C..0x0F', desc: '1,984 assignable units' },
+                    { name: 'znode_used', type: 'uint32_t', size: '4 B', offset: '0x10..0x13', desc: 'Active Z-Nodes (0..32)' },
+                    { name: 'reserved', type: 'uint32_t', size: '4 B', offset: '0x14..0x17', desc: 'Roving cursor tracker' }
+                ]
+            },
+            'znode_disk_t': {
+                name: 'znode_disk_t (512 Bytes Packed)',
+                fields: [
+                    { name: 'magic', type: 'uint32_t', size: '4 B', offset: '0x00..0x03', desc: '0x5A4E4F44 ("ZNOD")' },
+                    { name: 'type / flags', type: 'uint8_t / uint16_t', size: '3 B', offset: '0x05..0x07', desc: 'FILE/DIR | INLINE flag' },
+                    { name: 'local_id', type: 'uint16_t', size: '2 B', offset: '0x08..0x09', desc: 'Slot index in zone (1..31)' },
+                    { name: 'link_count', type: 'uint16_t', size: '2 B', offset: '0x0A..0x0B', desc: 'POSIX link reference count' },
+                    { name: 'granularity', type: 'uint16_t', size: '2 B', offset: '0x0C..0x0D', desc: '512B / 4KB / 16KB tier' },
+                    { name: 'extent_count', type: 'uint16_t', size: '2 B', offset: '0x0E..0x0F', desc: 'Primary extents (0..16)' },
+                    { name: 'size', type: 'uint64_t', size: '8 B', offset: '0x14..0x1B', desc: 'Logical file byte size' },
+                    { name: 'parent_id', type: 'uint64_t', size: '8 B', offset: '0x1C..0x23', desc: 'Parent dir compound ID' },
+                    { name: 'overflow_id', type: 'uint64_t', size: '8 B', offset: '0x24..0x2B', desc: 'Indirect extent page pointer' },
+                    { name: 'xattr_page_id', type: 'uint64_t', size: '8 B', offset: '0x2C..0x33', desc: 'Dedicated 4KB xattr page' },
+                    { name: 'extents[16]', type: 'ufs_extent_disk_t[16]', size: '448 B', offset: '0x40..0x1FF', desc: '16 Extent Descriptors OR 384B Inline' }
+                ]
+            },
+            'ufs_extent_disk_t': {
+                name: 'ufs_extent_disk_t (28 Bytes Packed)',
+                fields: [
+                    { name: 'logical_start', type: 'uint64_t', size: '8 B', offset: '0x00..0x07', desc: 'File logical byte offset' },
+                    { name: 'logical_length', type: 'uint64_t', size: '8 B', offset: '0x08..0x0F', desc: 'Logical byte span' },
+                    { name: 'zone_id', type: 'uint16_t', size: '2 B', offset: '0x10..0x11', desc: 'Target physical zone (0..31)' },
+                    { name: 'granularity', type: 'uint16_t', size: '2 B', offset: '0x12..0x13', desc: 'Tier or LZ4 flag (0x8000)' },
+                    { name: 'physical_unit', type: 'uint32_t', size: '4 B', offset: '0x14..0x17', desc: 'Starting 512B physical unit' },
+                    { name: 'physical_units', type: 'uint32_t', size: '4 B', offset: '0x18..0x1B', desc: 'Contiguous units allocated' }
+                ]
+            }
+        };
+
+        // --- APP STATE & DOM ---
+        let currentTab = 1;
+        let currentScenario = '1A';
+        let isRunning = false;
+        let cancelFlag = false;
+
+        const DOM = {
+            mainTabs: document.querySelectorAll('.tab-btn'),
+            scenarioNav: document.getElementById('scenario-nav'),
+            fatStage: document.getElementById('fat-stage'),
+            auraStage: document.getElementById('aura-stage'),
+            consoleLog: document.getElementById('console-log'),
+            codeSnippet: document.getElementById('code-snippet'),
+            codeFilename: document.getElementById('code-filename'),
+            structInspector: document.getElementById('struct-inspector-body'),
+            structTargetName: document.getElementById('struct-target-name'),
+            btnPlay: document.getElementById('btn-play'),
+            btnStep: document.getElementById('btn-step'),
+            btnReset: document.getElementById('btn-reset'),
+            btnSound: document.getElementById('btn-sound'),
+            btnCrt: document.getElementById('btn-crt'),
+            runnerLayer: document.getElementById('runner-layer'),
+            battleFlash: document.getElementById('battle-flash')
+        };
+
+        // Helpers
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+        function checkCancel() { if (cancelFlag) throw new Error("Cancelled"); }
+
+        function log(msg, type='sys') {
+            const now = new Date();
+            const ts = `${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}.${now.getMilliseconds().toString().padStart(3,'0')}`;
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.innerHTML = `<span class="ts">[${ts}]</span> ${msg}`;
+            DOM.consoleLog.appendChild(div);
+            DOM.consoleLog.scrollTop = DOM.consoleLog.scrollHeight;
+            audio.blip();
+        }
+
+        function triggerFlash() {
+            DOM.battleFlash.classList.add('active');
+            document.body.classList.add('screen-shake');
+            audio.battle();
+            setTimeout(() => {
+                DOM.battleFlash.classList.remove('active');
+                document.body.classList.remove('screen-shake');
+            }, 180);
+        }
+
+        // Spawn Animated Little Data Runner
+        function spawnDataRunner(startX, startY, endX, endY, label='1 KiB') {
+            const runner = document.createElement('div');
+            runner.className = 'data-runner';
+            runner.style.left = `${startX}px`;
+            runner.style.top = `${startY}px`;
+            runner.innerHTML = `
+                <div class="data-runner-tag">${label}</div>
+                <div class="data-runner-body">
+                    <div class="data-runner-eyes">
+                        <div class="data-runner-eye"></div>
+                        <div class="data-runner-eye"></div>
+                    </div>
+                </div>
+                <div class="data-runner-feet">
+                    <div class="data-runner-foot"></div>
+                    <div class="data-runner-foot"></div>
+                </div>
+            `;
+            DOM.runnerLayer.appendChild(runner);
+            audio.step();
+
+            setTimeout(() => {
+                runner.style.left = `${endX}px`;
+                runner.style.top = `${endY}px`;
+                audio.jump();
+            }, 50);
+
+            setTimeout(() => {
+                runner.remove();
+            }, 450);
+        }
+
+        // Spawn Mustache Extent Boss Character
+        function createMustacheBoss(parentEl, title="Sir Extent #0", startUnit=0, lenUnits=8, color="#ffd700") {
+            const boss = document.createElement('div');
+            boss.className = 'mustache-boss';
+            boss.innerHTML = `
+                <div class="mustache-boss-hat"></div>
+                <div class="mustache-boss-head">
+                    <div class="mustache-boss-eyes">
+                        <div class="mustache-boss-eye"></div>
+                        <div class="mustache-boss-eye"></div>
+                    </div>
+                    <div class="mustache-boss-mustache"></div>
+                </div>
+                <div class="mustache-boss-banner" style="border-color:${color}; color:${color};">${title} [${lenUnits * 512} B]</div>
+            `;
+            parentEl.appendChild(boss);
+            return boss;
+        }
+
+        // Render Struct Inspector Table
+        function renderStructInspector(structKey) {
+            const def = STRUCT_DEFS[structKey] || STRUCT_DEFS['superblock_disk_t'];
+            DOM.structTargetName.textContent = def.name;
+            
+            let html = `
+                <table class="struct-table">
+                    <thead>
+                        <tr>
+                            <th>FIELD NAME</th>
+                            <th>TYPE</th>
+                            <th>SIZE</th>
+                            <th>OFFSET</th>
+                            <th>DESCRIPTION / ROLE</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            def.fields.forEach(f => {
+                let pillClass = 'text-cyan-400';
+                if (f.size.includes('4,096') || f.size.includes('3,252')) pillClass = 'text-purple-400';
+                else if (f.size.includes('512') || f.size.includes('448') || f.size.includes('768')) pillClass = 'text-yellow-300';
+                else if (f.size.includes('8 B')) pillClass = 'text-green-400';
+
+                html += `
+                    <tr title="${f.desc}">
+                        <td class="font-bold text-white">${f.name}</td>
+                        <td class="text-gray-400">${f.type}</td>
+                        <td><span class="byte-pill ${pillClass}">${f.size}</span></td>
+                        <td class="text-gray-500">${f.offset}</td>
+                        <td class="text-gray-300">${f.desc}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            DOM.structInspector.innerHTML = html;
+        }
+
+        // --- SCENARIO SETUP & DISK MAP BUILDER ---
+        function setupScenarioDOM(id) {
+            cancelFlag = false;
+            DOM.fatStage.innerHTML = '';
+            DOM.auraStage.innerHTML = '';
+            DOM.consoleLog.innerHTML = '';
+            DOM.runnerLayer.innerHTML = '';
+
+            DOM.codeFilename.textContent = SCENARIOS[currentTab].find(s => s.id === id)?.codeFile || 'userfs.c';
+            DOM.codeSnippet.textContent = SNIPPETS[id] || '/* Kernel routine */';
+            Prism.highlightElement(DOM.codeSnippet);
+
+            if (id === '1A' || id === '1B') {
+                // Interactive 32 MB Disk Layout Map
+                renderStructInspector('superblock_disk_t');
+                
+                DOM.fatStage.innerHTML = `
+                    <div class="flex flex-col gap-2">
+                        <div class="ut-box p-2 text-center text-xs text-red-400 font-bold border-red-500">Boot Sector (512 B)</div>
+                        <div class="ut-box p-2 text-center text-xs text-red-400 font-bold border-red-500">FAT Table 1 (Global 128 KB)</div>
+                        <div class="ut-box p-2 text-center text-xs text-red-400 font-bold border-red-500">FAT Table 2 (Backup 128 KB)</div>
+                        <div class="ut-box p-2 text-center text-xs text-red-400 font-bold border-red-500">Root Directory Cluster</div>
+                        <div class="ut-box p-8 text-center text-xs text-gray-400 font-bold border-gray-600 bg-black/40">
+                            Massive Monolithic Data Area (31.7 MB)<br>
+                            <span class="text-[10px] text-red-400 mt-2 block">Seek travel spans full disk width!</span>
+                        </div>
+                    </div>
+                `;
+
+                DOM.auraStage.innerHTML = `
+                    <div class="flex flex-col gap-2">
+                        <div class="flex gap-2">
+                            <div class="ut-box ut-box-yellow p-2 flex-1 text-center text-xs font-bold cursor-pointer hover:scale-105 transition-all" id="hover-sb">
+                                Superblock (Page 0)
+                            </div>
+                            <div class="ut-box ut-box-purple p-2 flex-1 text-center text-xs font-bold cursor-pointer hover:scale-105 transition-all" id="hover-jrn">
+                                Delta Journal (Pages 1..512)
+                            </div>
+                        </div>
+
+                        <div class="text-[10px] text-cyan-300 font-bold mt-1" style="font-family: var(--font-pixel);">32 AUTONOMOUS STORAGE ZONES (1 MB EACH):</div>
+                        <div class="grid grid-cols-4 gap-2" id="zones-shelf">
+                            <!-- Injected 32 zones -->
+                        </div>
+                    </div>
+                `;
+
+                const shelf = document.getElementById('zones-shelf');
+                for (let z = 0; z < 8; z++) {
+                    const zCard = document.createElement('div');
+                    zCard.className = `ut-box ${z === 2 ? 'ut-box-cyan' : 'border-gray-700'} p-2 flex flex-col gap-1 cursor-pointer hover:border-white transition-all`;
+                    zCard.innerHTML = `
+                        <div class="text-[9px] font-bold text-yellow-300">ZONE ${z}</div>
+                        <div class="text-[8px] text-gray-400 hover:text-cyan-300" data-struct="zone_header_disk_t">Header (4KB)</div>
+                        <div class="text-[8px] text-purple-300 hover:text-white" data-struct="znode_disk_t">32 Z-Nodes (16KB)</div>
+                        <div class="text-[8px] text-green-300 hover:text-white" data-struct="zone_summary_disk_t">Bitmap (4KB)</div>
+                        <div class="text-[8px] text-gray-500">Data Units (1MB)</div>
+                    `;
+                    zCard.addEventListener('mouseenter', (e) => {
+                        renderStructInspector('zone_header_disk_t');
+                        audio.blip();
+                    });
+                    shelf.appendChild(zCard);
+                }
+
+                document.getElementById('hover-sb').addEventListener('mouseenter', () => {
+                    renderStructInspector('superblock_disk_t');
+                    audio.blip();
+                });
+                document.getElementById('hover-jrn').addEventListener('mouseenter', () => {
+                    renderStructInspector('superblock_disk_t');
+                    audio.blip();
+                });
+            }
+
+            else if (id.startsWith('3') || id.startsWith('2')) {
+                // Allocation Theater Stage
+                renderStructInspector('znode_disk_t');
+
+                DOM.fatStage.innerHTML = `
+                    <div class="text-[10px] text-red-400 font-bold mb-2">FAT32 Coarse Cluster Array (4KB Clusters)</div>
+                    <div class="grid grid-cols-6 gap-1 p-1 bg-black/40 border border-[#555]" id="fat-grid"></div>
+                `;
+                const fatGrid = document.getElementById('fat-grid');
+                for (let i = 0; i < 36; i++) {
+                    const blk = document.createElement('div');
+                    blk.className = `disk-unit ${[3,4,8,15,22,23].includes(i) ? 'used' : ''}`;
+                    blk.textContent = `C${i}`;
+                    fatGrid.appendChild(blk);
+                }
+
+                DOM.auraStage.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[10px] text-cyan-300 font-bold" style="font-family: var(--font-pixel);">ZONE 2: 512B PHYSICAL ALLOCATION UNITS</div>
+                        <div class="text-[9px] text-yellow-300 font-mono" id="aura-extent-counter">Active Extents: 0</div>
+                    </div>
+                    <div class="relative p-2 bg-black/60 border-2 border-cyan-500 min-h-[160px] flex items-center justify-center">
+                        <div class="grid grid-cols-8 gap-1.5 w-full" id="aura-grid"></div>
+                    </div>
+                    <div class="mt-3 ut-box ut-box-yellow p-2" id="znode-card">
+                        <div class="flex justify-between text-xs font-bold text-yellow-300 border-b border-yellow-500 pb-1">
+                            <span>Z-NODE #42: "telemetry.log"</span>
+                            <span id="zn-size-label">Size: 0 B</span>
+                        </div>
+                        <div class="text-[10px] text-gray-300 mt-1 font-mono flex justify-between" id="zn-gran-label">
+                            <span>Granularity: 512B</span>
+                            <span>Flags: REGULAR</span>
+                        </div>
+                        <div class="mt-1 text-[10px] text-cyan-300 font-mono" id="zn-extents-list">
+                            Extents: (None allocated)
+                        </div>
+                    </div>
+                `;
+
+                const auraGrid = document.getElementById('aura-grid');
+                for (let i = 0; i < 32; i++) {
+                    const blk = document.createElement('div');
+                    blk.className = `disk-unit ${[2,3,10,11,18,19].includes(i) ? 'used' : ''}`;
+                    blk.id = `unit-${i}`;
+                    blk.textContent = `U${i}`;
+                    auraGrid.appendChild(blk);
+                }
+            }
+
+            else if (id.startsWith('4')) {
+                // Directory & Hot Cache Stage
+                renderStructInspector('znode_disk_t');
+                DOM.fatStage.innerHTML = `
+                    <div class="text-[10px] text-red-400 font-bold mb-2">FAT32 Directory Table (Linear Disk Scan)</div>
+                    <div class="flex flex-col gap-1 text-xs font-mono">
+                        <div class="p-1.5 bg-black/60 border border-[#555]" id="fat-d0">1. /sys/boot.bin (Clust 10)</div>
+                        <div class="p-1.5 bg-black/60 border border-[#555]" id="fat-d1">2. /config/net.json (Clust 24)</div>
+                        <div class="p-1.5 bg-black/60 border border-[#555]" id="fat-d2">3. /logs/temp.csv (Clust 68)</div>
+                        <div class="p-1.5 bg-black/60 border border-[#555]" id="fat-d3">4. /sensor_data.bin (Clust 102) ★</div>
+                    </div>
+                `;
+
+                DOM.auraStage.innerHTML = `
+                    <div class="text-[10px] text-yellow-300 font-bold mb-2">AuraFS RAM Hot Cache Map (FNV-1a 64-Bit Hash)</div>
+                    <div class="ut-box ut-box-yellow p-2 mb-2 font-mono text-xs" id="aura-hot-card">
+                        <div class="flex justify-between text-gray-400"><span>Hash: 0x9B1A...</span><span>Z-Node ID: (1<<32)|4</span></div>
+                        <div class="flex justify-between text-gray-400"><span>Hash: 0x4C88...</span><span>Z-Node ID: (1<<32)|12</span></div>
+                        <div class="flex justify-between text-green-400 font-bold bg-green-950/40 p-1 mt-1 border border-green-500" id="aura-cache-hit">
+                            <span>Hash("sensor_data.bin") -> 0x8F3C...</span>
+                            <span>Target: (2<<32)|18 ★</span>
+                        </div>
+                    </div>
+                    <div class="ut-box ut-box-cyan p-2 font-mono text-xs">
+                        <div class="text-cyan-300 font-bold">Direct RAM Resolution in 0ms!</div>
+                        <div class="text-[10px] text-gray-400">Bypasses multi-page on-disk directory table reads entirely.</div>
+                    </div>
+                `;
+            }
+
+            else if (id.startsWith('5')) {
+                // Delta Journal & Recovery Stage
+                renderStructInspector('superblock_disk_t');
+                DOM.fatStage.innerHTML = `
+                    <div class="text-center p-6 text-red-400 text-xs font-bold border-2 border-dashed border-red-500 bg-red-950/20">
+                        ⚠️ FAT32 HAS ZERO JOURNALING!<br><br>
+                        A crash mid-write breaks cluster chains and causes cross-linked files.<br>
+                        Requires hours of slow chkdsk / fsck.vfat disk sweeps on boot.
+                    </div>
+                `;
+
+                DOM.auraStage.innerHTML = `
+                    <div class="text-[10px] text-purple-300 font-bold mb-2">AuraFS Atomic Delta Journal (Pages 1..512)</div>
+                    <div class="flex justify-between gap-2 mb-3">
+                        <div class="ut-box p-2 flex-1 text-center text-xs text-green-400 font-mono">Old Z-Node (512B)<br><span class="text-[10px] text-gray-400">Size: 4096 B</span></div>
+                        <div class="text-2xl font-bold text-yellow-400 flex items-center">⊕</div>
+                        <div class="ut-box p-2 flex-1 text-center text-xs text-cyan-400 font-mono">New Z-Node (512B)<br><span class="text-[10px] text-gray-400">Size: 8192 B</span></div>
+                    </div>
+                    <div class="ut-box ut-box-purple p-2 text-center text-xs font-mono" id="jrn-box">
+                        <div class="text-yellow-300 font-bold">Atomic 4KB Sector Record (TxID: 104)</div>
+                        <div class="text-[10px] text-purple-200 mt-1" id="jrn-delta-text">Delta: JOP_SET_ZNODE { Size: 4096 -> 8192 }</div>
+                    </div>
+                `;
+            }
+        }
+
+        // --- ANIMATION CONTROLLER ---
+        async function runAnimation(id) {
+            log(`★ INITIALIZING SCENARIO [${id}] ★`, 'sys');
+            audio.init();
+
+            if (id === '1A' || id === '1B') {
+                log('Rendering 32 MB Disk Architecture and Superblock...', 'sys');
+                await sleep(500); checkCancel();
+                triggerFlash();
+                log('Superblock loaded into RAM at Page 0 (4,096 Bytes).', 'aura');
+                await sleep(600); checkCancel();
+                log('Global Heatmap summary initialized for all 32 zones (768 Bytes).', 'aura');
+                renderStructInspector('superblock_disk_t');
+            }
+
+            else if (id === '2A') {
+                log('FAT32: Application requests 8 units. Starting linear scan of global FAT array...', 'fat');
+                for (let i = 0; i < 18; i++) {
+                    checkCancel();
+                    const el = document.querySelectorAll('#fat-grid .disk-unit')[i];
+                    if (el) el.classList.add('scanning');
+                    audio.blip();
+                    await sleep(60);
+                    if (el) el.classList.remove('scanning');
+                }
+                log('FAT32: Required 18 disk sector reads to find free clusters!', 'fat');
+
+                await sleep(600); checkCancel();
+                log('AuraFS: Scanning Superblock Zone Summary in CPU L1 Cache...', 'aura');
+                renderStructInspector('zone_summary_disk_t');
+                await sleep(500); checkCancel();
+                log('AuraFS: Zone 0 & 1 bypassed in 0ns! Found largest_free_run=8 in Zone 2.', 'aura');
+                triggerFlash();
+
+                for (let i = 4; i < 12; i++) {
+                    const u = document.getElementById(`unit-${i}`);
+                    if (u) u.classList.add('active-unit');
+                }
+                log('AuraFS: O(1) Allocation completed with 0 disk seeks!', 'aura');
+            }
+
+            else if (id === '2B') {
+                log('AuraFS: Executing 64-bit Word Bitwise Scanner with __builtin_ctzll...', 'aura');
+                await sleep(400); checkCancel();
+                log('Bitwise Word 0: 0xFFFFFFFFFFFFFFFF -> All 64 bits occupied! Skipped 32 KB in 1 CPU cycle!', 'aura');
+                await sleep(600); checkCancel();
+                log('Bitwise Word 1: ~word = 0x0000000000000004 -> tzcnt returned bit index 2 in 1 cycle!', 'aura');
+                triggerFlash();
+                const u = document.getElementById('unit-4');
+                if (u) u.classList.add('active-unit');
+            }
+
+            else if (id === '3A') {
+                // Multi-Granularity Runner Animation
+                log('Scenario 3A: Multi-Granularity Sizing Engine.', 'sys');
+                log('Step 1: Writing Small File (100 B) -> Small Tier (512 B / 1 Unit).', 'aura');
+                
+                const zBox = document.getElementById('znode-card').getBoundingClientRect();
+                const u0 = document.getElementById('unit-4').getBoundingClientRect();
+                spawnDataRunner(zBox.left + 50, zBox.top, u0.left, u0.top, '100 B');
+
+                await sleep(500); checkCancel();
+                document.getElementById('unit-4').classList.add('active-unit');
+                createMustacheBoss(document.getElementById('unit-4'), 'Sir Extent #0', 4, 1, '#00ffff');
+                audio.coalesceFanfare();
+                document.getElementById('zn-size-label').textContent = 'Size: 100 B (Slack: 412 B)';
+                document.getElementById('zn-extents-list').textContent = 'Extents: [0] Start=4, Len=1 unit (512B)';
+                log('Allocated 1 unit (512 B). Saved 3.5 KB compared to FAT32 4KB cluster!', 'aura');
+            }
+
+            else if (id === '3B') {
+                // Slack Reuse
+                log('Scenario 3B: Zero-I/O Slack Reuse.', 'sys');
+                log('Application appends 200 bytes (Total size: 300 B).', 'aura');
+                await sleep(500); checkCancel();
+                
+                log('Allocated extent slack is 412 B >= 200 B needed.', 'aura');
+                document.getElementById('unit-4').classList.add('coalescing');
+                audio.coalesceFanfare();
+                document.getElementById('zn-size-label').textContent = 'Size: 300 B (Slack: 212 B)';
+                log('Slack reused in-place! ZERO DISK WRITES and ZERO BITMAP CHANGES!', 'aura');
+            }
+
+            else if (id === '3C') {
+                // Mustache Merge & Extent Coalescing!
+                log('Scenario 3C: Adjacent Extent Coalescing & Mustache Merge!', 'sys');
+                
+                document.getElementById('unit-4').classList.add('active-unit');
+                const boss1 = createMustacheBoss(document.getElementById('unit-4'), 'Sir Extent #0', 4, 1, '#00ffff');
+                log('File grows past 512B. Allocating adjacent unit 5 on disk.', 'aura');
+                
+                await sleep(600); checkCancel();
+                document.getElementById('unit-5').classList.add('active-unit');
+                const boss2 = createMustacheBoss(document.getElementById('unit-5'), 'Baron Run #1', 5, 1, '#ffd700');
+                
+                await sleep(800); checkCancel();
+                log('Units 4 and 5 are immediately adjacent in Zone 2! Triggering Coalescing...', 'boss');
+                triggerFlash();
+                
+                boss1.remove();
+                boss2.remove();
+                createMustacheBoss(document.getElementById('unit-4'), 'GRAND EXTENT BOSS (COALESCED)', 4, 2, '#50fa7b');
+                audio.coalesceFanfare();
+                
+                document.getElementById('unit-4').classList.add('coalescing');
+                document.getElementById('unit-5').classList.add('coalescing');
+                document.getElementById('zn-extents-list').textContent = 'Extents: [0] Start=4, Len=2 units (1,024 B) [1 SINGLE EXTENT DESCRIPTOR!]';
+                document.getElementById('zn-size-label').textContent = 'Size: 1,024 B';
+                log('VICTORY: Two descriptors merged into 1 continuous Extent Boss! Descriptor exhaustion prevented!', 'boss');
+            }
+
+            else if (id === '3F') {
+                // Tier-0 Inline Z-Node Data
+                log('Scenario 3F: Tier-0 Inline Z-Node Data (<= 384 B).', 'sys');
+                log('Application writes tiny 120-byte sensor reading...', 'aura');
+                await sleep(500); checkCancel();
+                
+                const zBox = document.getElementById('znode-card').getBoundingClientRect();
+                spawnDataRunner(zBox.left + 50, zBox.top - 50, zBox.left + 50, zBox.top + 20, '120 B');
+                
+                await sleep(500); checkCancel();
+                triggerFlash();
+                document.getElementById('znode-card').classList.add('ut-box-green');
+                document.getElementById('zn-gran-label').innerHTML = '<span class="text-green-400 font-bold">Flags: UFS_FLAG_INLINE</span><span>0 PHYSICAL BLOCKS ALLOCATED!</span>';
+                document.getElementById('zn-extents-list').textContent = 'Inline Payload: {"temp": 24.5, "pressure": 1013, "status": "OK"}';
+                document.getElementById('zn-size-label').textContent = 'Size: 120 B';
+                log('Data embedded directly inside 512B Z-Node union! 0% slack, 0 disk block seeks!', 'boss');
+            }
+
+            else if (id === '3I') {
+                // Transparent LZ4 Compression
+                log('Scenario 3I: Transparent Per-Extent LZ4 Compression.', 'sys');
+                log('Compressing 4,096-Byte repetitive JSON telemetry chunk...', 'aura');
+                await sleep(600); checkCancel();
+                
+                triggerFlash();
+                log('LZ4 compressed 4,096 B down to 420 B! Fits in a single 512B physical unit!', 'boss');
+                document.getElementById('unit-4').classList.add('compressed');
+                createMustacheBoss(document.getElementById('unit-4'), 'LZ4 Compressed Extent', 4, 1, '#bd93f9');
+                audio.coalesceFanfare();
+                document.getElementById('zn-extents-list').textContent = 'Extents: [0] Start=4, Logical=4,096 B, Physical=512 B (87.5% FLASH SAVINGS!)';
+                document.getElementById('zn-size-label').textContent = 'Logical Size: 4,096 B (Physical: 512 B)';
+            }
+
+            else if (id === '4A') {
+                // Hot Cache Lookups
+                log('Scenario 4A: In-Memory Hot Directory Cache Resolution.', 'sys');
+                log('Searching for path "/sensor_data.bin"...', 'aura');
+                await sleep(500); checkCancel();
+                
+                log('Computing 64-bit FNV-1a Hash -> 0x8F3C29AA4100...', 'aura');
+                await sleep(400); checkCancel();
+                triggerFlash();
+                log('HOT CACHE HIT in RAM! Resolved Object ID: (2<<32)|18 in 0 milliseconds!', 'boss');
+            }
+
+            else if (id === '5A' || id === '5B') {
+                // Journaling
+                log('Scenario 5: Atomic 4KB Sector Delta Journaling & Replay.', 'sys');
+                log('Appending transaction delta record to Journal Page 14...', 'aura');
+                await sleep(500); checkCancel();
+                triggerFlash();
+                document.getElementById('jrn-box').classList.add('ut-box-yellow');
+                log('Transaction committed atomically before disk in-place mutations.', 'boss');
+                await sleep(500); checkCancel();
+                log('Boot recovery scan: Replayed dirty delta in 2 milliseconds flat!', 'aura');
+            }
+
+            log(`Scenario [${id}] completed successfully.`, 'sys');
+        }
+
+        // --- TAB & NAVIGATION INITIALIZATION ---
+        function renderScenarioNav() {
+            DOM.scenarioNav.innerHTML = '';
+            const list = SCENARIOS[currentTab] || [];
+            list.forEach((sc, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `scenario-pill ${idx === 0 ? 'active' : ''}`;
+                btn.textContent = sc.name;
+                btn.onclick = () => {
+                    document.querySelectorAll('.scenario-pill').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentScenario = sc.id;
+                    setupScenarioDOM(currentScenario);
+                };
+                DOM.scenarioNav.appendChild(btn);
+            });
+            currentScenario = list[0]?.id || '1A';
+            setupScenarioDOM(currentScenario);
+        }
+
+        DOM.mainTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                DOM.mainTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentTab = parseInt(tab.dataset.tab, 10);
+                renderScenarioNav();
+                audio.blip();
+            });
+        });
+
+        DOM.btnPlay.addEventListener('click', async () => {
+            if (isRunning) return;
+            isRunning = true;
+            cancelFlag = false;
+            DOM.btnPlay.disabled = true;
+            try {
+                setupScenarioDOM(currentScenario);
+                await runAnimation(currentScenario);
+            } catch(e) {
+                if (e.message !== "Cancelled") console.error(e);
+            } finally {
+                isRunning = false;
+                DOM.btnPlay.disabled = false;
+            }
+        });
+
+        DOM.btnReset.addEventListener('click', () => {
+            cancelFlag = true;
+            setupScenarioDOM(currentScenario);
+            audio.blip();
+        });
+
+        DOM.btnStep.addEventListener('click', () => {
+            DOM.btnPlay.click();
+        });
+
+        DOM.btnSound.addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            DOM.btnSound.textContent = audio.muted ? '🔇 MUTED' : '🔊 SOUND';
+        });
+
+        DOM.btnCrt.addEventListener('click', () => {
+            document.body.classList.toggle('no-crt');
+        });
+
+        // Initialize on boot
+        renderScenarioNav();
+    </script>
+</body>
+</html>
