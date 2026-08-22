@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AuraFS Architecture — Complete Edition (Slides 1–63)</title>
+  <title>AuraFS Architecture — Complete Edition (Slides 1–73)</title>
   <meta name="description" content="A Zoned, Variable-Granularity Filesystem Presentation by Team AURA - Undertale Pixel Art Edition">
   
   <!-- Stylesheets -->
@@ -23,6 +23,16 @@
   <!-- Screen Flash for Boss/Encounter Slides -->
   <div class="encounter-flash"></div>
 
+  <!-- Chapter Transition Curtain Overlay -->
+  <div id="chapter-transition-overlay" class="chapter-overlay">
+    <div class="chapter-curtain-box">
+      <div class="chapter-overlay-soul"></div>
+      <div class="chapter-overlay-zone" id="chapter-overlay-zone">ZONE 01: SNOWDIN FOREST</div>
+      <div class="chapter-overlay-title" id="chapter-overlay-title">CHAPTER 2: DISK LAYOUT</div>
+      <div class="chapter-overlay-subtitle" id="chapter-overlay-subtitle">Storage Domains, 4KB Pages & Superblock</div>
+    </div>
+  </div>
+
   <!-- Main Presentation Viewport -->
   <main id="presentation-viewport">
     <div class="slide-stage" id="slide-stage">
@@ -40,9 +50,9 @@
         <div class="hp-bar-bg">
           <div class="hp-bar-fill" id="hud-hp-fill" style="width: 10%;"></div>
         </div>
-        <span class="hp-text" id="hud-hp-text">1/63</span>
+        <span class="hp-text" id="hud-hp-text">1/73</span>
       </div>
-      <span id="hud-slide-num" class="text-xs" style="color: #ffffff; letter-spacing: 1px;">SLIDE 1 / 63</span>
+      <span id="hud-slide-num" class="text-xs" style="color: #ffffff; letter-spacing: 1px;">SLIDE 1 / 73</span>
     </div>
 
     <div class="hud-actions">
@@ -67,7 +77,7 @@
   <!-- Slide Map / Overview Grid Modal -->
   <div id="slide-overview-modal">
     <div class="overview-header">
-      <div class="overview-title"><span class="pixel-star-large">★</span> AURAFS WORLD MAP (ALL 63 SLIDES)</div>
+      <div class="overview-title"><span class="pixel-star-large">★</span> AURAFS WORLD MAP (ALL 73 SLIDES)</div>
       <button class="ut-btn" id="btn-close-modal">✕ CLOSE</button>
     </div>
     <div class="overview-grid" id="overview-grid">
@@ -78,7 +88,7 @@
   <!-- Scripts -->
   <script>
     // Configuration for Complete Version
-    window.PRESENTATION_MAX_SLIDES = 63;
+    window.PRESENTATION_MAX_SLIDES = 73;
   </script>
   <script src="js/slides-data.js"></script>
   <script src="js/audio-synth.js"></script>

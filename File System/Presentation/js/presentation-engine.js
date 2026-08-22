@@ -154,10 +154,23 @@ class PresentationEngine {
     const oldZone = this.slidesData[this.currentIndex]?.zone;
     const newZone = this.slidesData[index].zone;
 
-    // Trigger encounter flash & screen shake if zone changes or boss encounter
+    // Trigger chapter/zone transition curtain & encounter flash
     if (newZone !== oldZone && oldZone !== undefined) {
       this.triggerScreenShake();
-      if (newZone === 'encounter') {
+      const overlay = document.getElementById('chapter-transition-overlay');
+      const zoneEl = document.getElementById('chapter-overlay-zone');
+      const titleEl = document.getElementById('chapter-overlay-title');
+      const subEl = document.getElementById('chapter-overlay-subtitle');
+
+      if (overlay && zoneEl && titleEl && subEl) {
+        zoneEl.textContent = this.slidesData[index].zoneName || 'NEW ZONE';
+        titleEl.textContent = this.slidesData[index].chapter || 'CHAPTER TRANSITION';
+        subEl.textContent = this.slidesData[index].title || '';
+        overlay.classList.add('active');
+        setTimeout(() => overlay.classList.remove('active'), 650);
+      }
+
+      if (newZone === 'encounter' || newZone === 'blizzard') {
         const flash = document.querySelector('.encounter-flash');
         if (flash) {
           flash.classList.add('active');

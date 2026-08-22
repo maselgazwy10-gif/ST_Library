@@ -279,10 +279,17 @@ graph LR
 
 ### Slide-by-Slide Verbatim Presenter Script
 
-#### Slide 11: The Anatomy of a Page (The Atomic 4 KiB Physical I/O Currency)
+#### Slide 11: Deep Dive: Zone Header Struct (`zone_header_disk_t`)
+* **Slide Title**: Deep Dive: Zone Header Struct (zone_header_disk_t) (4,096 Bytes / 1 Page)
+* **Presenter Script**:
+  > *"Every 1 MB storage zone begins with an authoritative 4KB header `zone_header_disk_t`. It contains 8 packed fields: `magic` (0x5A4F4E45), `version`, `zone_id`, `total_units` (2,048), `data_first_unit`, `bitmap_bytes` (256 B), `znode_slots` (32), and `flags`, padded to exactly 4,096 bytes. This makes every zone an autonomous domain with O(1) geometry resolution without consulting the global superblock."*
+
+---
+
+#### Slide 12: The Anatomy of a Page (The Atomic 4 KiB Physical I/O Currency)
 * **Slide Title**: The Anatomy of a Page — The Atomic 4 KiB Physical I/O Unit
 * **Presenter Script**:
-  > *"Before diving into allocation, let's understand the physical currency of AuraFS: the **4 KiB Page** (`UFS_BLOCK_SIZE = 4096 B`). Why 4 KiB? Because it matches the CPU memory page size, DMA burst transfer units, and SPI/NAND flash page programming boundaries.
+  > *"The physical currency of AuraFS is the **4 KiB Page** (`UFS_BLOCK_SIZE = 4096 B`). Why 4 KiB? Because it matches the CPU memory page size, DMA burst transfer units, and SPI/NAND flash page programming boundaries.
   > The 4KB page connects every structure in our filesystem:*
   > * *1 Page = 8 Z-Nodes (512B each). A 32-slot zone table takes exactly 4 pages.*
   > * *1 Page = 8 Physical Units (512B each). A Medium extent is exactly 1 Page.*
@@ -292,7 +299,35 @@ graph LR
 
 ---
 
-#### Slide 30: File Numbers Limit & Dynamic Cross-Zone Scaling
+#### Slide 17: Deep Dive: Superblock On-Disk Struct (`superblock_disk_t`)
+* **Slide Title**: Deep Dive: Superblock Struct (superblock_disk_t) (4,096 Bytes / Page 0)
+* **Presenter Script**:
+  > *"At Page 0 of the entire disk lives the master `superblock_disk_t` (4,096 Bytes). It stores filesystem identification (`0x55465332`), disk geometry (32 MB / 8,192 pages), delta journal ring buffer boundaries (Pages 1..512), root directory ID, monotonic TxID, checksum, and crucially—the 768-byte Global Zone Summary Table."*
+
+---
+
+#### Slide 18: Deep Dive: Zone Summary Struct (`zone_summary_disk_t`)
+* **Slide Title**: Deep Dive: Zone Summary Struct (zone_summary_disk_t) (24 Bytes per Zone)
+* **Presenter Script**:
+  > *"Directly inside the superblock, AuraFS maintains 32 `zone_summary_disk_t` entries (24 bytes each = 768 B total). Each entry records `zone_id`, `free_units`, `largest_free_run`, `total_units`, and `znode_used`. This gives the allocator instant O(1) visibility across the entire disk within CPU L1 cache, avoiding megabytes of bitmap scanning."*
+
+---
+
+#### Slide 33: Deep Dive: Z-Node 512-Byte Packed Struct (`znode_disk_t`)
+* **Slide Title**: Deep Dive: Z-Node 512-Byte Packed Struct (znode_disk_t)
+* **Presenter Script**:
+  > *"Our Z-Node is a compact 512-byte metadata container (8 Z-Nodes per 4KB page). It consists of a 64-byte packed header storing size, parent ID, timestamps, generation, and overflow/xattr pointers, followed by a 448-byte dual-mode payload: either 16 primary extent descriptors (`16 * 28 B`) or 384 bytes of Tier-0 inline data."*
+
+---
+
+#### Slide 34: Deep Dive: Extent Descriptor Struct (`ufs_extent_disk_t`)
+* **Slide Title**: Deep Dive: Extent Descriptor Struct (ufs_extent_disk_t) (28 Bytes Packed)
+* **Presenter Script**:
+  > *"Each extent is represented by a 28-byte descriptor: `logical_start` (8B), `logical_length` (8B), `zone_id` (2B), `granularity` (2B), `physical_unit` (4B), and `physical_units` (4B). This enables direct O(1) translation from file offset to physical disk unit with zero intermediate block tables, and powers our transparent LZ4 sub-block compression."*
+
+---
+
+#### Slide 35: File Numbers Limit & Dynamic Cross-Zone Scaling
 * **Slide Title**: The File Numbers Limit & Dynamic Cross-Zone Scaling (Overcoming Inode Exhaustion)
 * **Presenter Script**:
   > *"In traditional Unix and ext2 filesystems, the inode table is fixed at format time. Populating the disk with thousands of tiny sensor files exhausts inodes and causes `ENOSPC` failures, leaving gigabytes of free disk space completely unusable.
@@ -304,28 +339,28 @@ graph LR
 
 ---
 
-#### Slide 33: What Does Allocation Mean?
+#### Slide 38: What Does Allocation Mean?
 * **Slide Title**: What Does Allocation Mean? (Deciding Which Physical Space to Give to a File)
 * **Presenter Script**:
   > *"Good morning / afternoon everyone. I will be presenting Chapter 4: Allocation and Granularity. When an application requests to write data, the filesystem must answer five fundamental questions: How much physical space to allocate, which granularity class to pick, whether to keep the data physically contiguous, how to gracefully handle fragmentation, and how to manage file growth over time. In AuraFS, the allocation subsystem in `userfs.c` coordinates all of these decisions to maximize throughput while preventing space waste."*
 
 ---
 
-#### Slide 34–36: Contiguous vs. Scattered Allocation
+#### Slide 39–41: Contiguous vs. Scattered Allocation
 * **Slide Title**: Standard Allocation Approaches & Contiguous vs. Scattered Allocation
 * **Presenter Script**:
   > *"Historically, file systems chose between two extremes: pure contiguous allocation or scattered linked blocks. Contiguous allocation offers peak sequential performance and simple metadata, but suffers severely from external fragmentation. Scattered allocation avoids fragmentation, but causes heavy disk head jumping and massive metadata structures. AuraFS bridges this gap using extent-based storage."*
 
 ---
 
-#### Slide 37–39: Our Allocation Principle (Contiguous-First + Fallback)
+#### Slide 42–44: Our Allocation Principle (Contiguous-First + Fallback)
 * **Slide Title**: Our Allocation Principle: Contiguous When Possible + Fragmented When Necessary
 * **Presenter Script**:
   > *"Our guiding philosophy is: **Contiguous when possible, fragmented when necessary**. When allocating space, `choose_zone_for_allocation` first searches for a single contiguous run in the file's home zone. If the disk is fragmented and no single run is large enough, `choose_zone_for_partial_allocation` claims the largest available runs and binds them together as extents inside a single Z-Node. The user experiences uninterrupted writing while disk space is fully utilized."*
 
 ---
 
-#### Slide 40–43: The Multi-Granularity Architecture (Act 1)
+#### Slide 45–48: The Multi-Granularity Architecture (Act 1)
 * **Slide Title**: Why Multiple Physical Granularities? & Our Allocation Granularities
 * **Presenter Script**:
   > *"Standard filesystems use a single fixed cluster size—such as 4 KiB or 32 KiB. If you store a 100-byte configuration file on a 32 KiB cluster, over 99% of that space is wasted as internal slack. To eliminate this, AuraFS introduces three right-sized physical granularity tiers:*
@@ -336,7 +371,7 @@ graph LR
 
 ---
 
-#### Slide 44–48: The Smart Growth Engine (Act 2)
+#### Slide 49–53: The Smart Growth Engine (Act 2)
 * **Slide Title**: Granularity Can Change as a File Grows & Reusing Existing Slack
 * **Presenter Script**:
   > *"Now let's examine Act 2: The Smart Growth Engine. As files expand, AuraFS executes a three-tier growth escalation:*
@@ -346,7 +381,7 @@ graph LR
 
 ---
 
-#### Slide 49: Tier 0 — Inline Z-Node Data (Act 3 Showstopper)
+#### Slide 54: Tier 0 — Inline Z-Node Data (Act 3 Showstopper)
 * **Slide Title**: Act 3: Tier 0 — Inline Z-Node Data (Zero-Block Storage for $\le 384\text{ B}$)
 * **Presenter Script**:
   > *"Now for our flagship innovation in Act 3: **Tier-0 Inline Z-Node Data**. In embedded and operating system environments, many files are tiny—sensor logs, keys, status flags under 384 bytes.*
@@ -355,7 +390,7 @@ graph LR
 
 ---
 
-#### Slide 50: Extended Attributes (xattrs) & MIME Indexing (Act 3 Innovation)
+#### Slide 55: Extended Attributes (xattrs) & MIME Indexing (Act 3 Innovation)
 * **Slide Title**: Act 3: Extended Attributes (xattrs) & MIME Indexing (Extension-Free Freedom)
 * **Presenter Script**:
   > *"Our next Act 3 innovation is **Extended Attributes (xattrs)** directly supported in the Z-Node.*
@@ -365,7 +400,7 @@ graph LR
 
 ---
 
-#### Slide 51: Transparent Per-Extent Compression (LZ4) (Act 3 Showstopper)
+#### Slide 56: Transparent Per-Extent Compression (LZ4) (Act 3 Showstopper)
 * **Slide Title**: Act 3: Transparent Per-Extent Compression (LZ4) (Sub-Block Density & Flash Lifespan)
 * **Presenter Script**:
   > *"Our next flagship innovation in Act 3 is **Transparent Per-Extent LZ4 Compression**.*
@@ -378,7 +413,7 @@ graph LR
 
 ---
 
-#### Slide 52: Hardware & Flash Optimizations (Act 3 Showstopper)
+#### Slide 57: Hardware & Flash Optimizations (Act 3 Showstopper)
 * **Slide Title**: Act 3: Hardware & Flash Optimizations (64-Bit Bitwise Scanner & Wear-Leveling)
 * **Presenter Script**:
   > *"To ensure optimal performance on physical hardware, we engineered two low-level innovations:*
@@ -387,14 +422,14 @@ graph LR
 
 ---
 
-#### Slide 53: The Master 3-Act Allocation Workflow
+#### Slide 58: The Master 3-Act Allocation Workflow
 * **Slide Title**: The Master 3-Act Allocation Workflow (End-to-End Decision Pipeline)
 * **Presenter Script**:
-  > *"To summarize the entire allocation pipeline on Slide 53: Every write is evaluated in sequence—Tier-0 Inline for tiny files, Slack Reuse for existing extents, In-Place Tail Expansion & Coalescing for adjacent growth, LZ4 Extent Compression for dense storage, and Contiguous-First Multi-Granularity Fallback for new allocations. This gives AuraFS unprecedented storage density and near-zero fragmentation."*
+  > *"To summarize the entire allocation pipeline on Slide 58: Every write is evaluated in sequence—Tier-0 Inline for tiny files, Slack Reuse for existing extents, In-Place Tail Expansion & Coalescing for adjacent growth, LZ4 Extent Compression for dense storage, and Contiguous-First Multi-Granularity Fallback for new allocations. This gives AuraFS unprecedented storage density and near-zero fragmentation."*
 
 ---
 
-#### Slide 54: Comparison Arena (FAT32 vs. Enhanced AuraFS)
+#### Slide 59: Comparison Arena (FAT32 vs. Enhanced AuraFS)
 * **Slide Title**: FAT32 vs. AuraFS: Allocation & Granularity (Frostfire Blizzard Arena)
 * **Presenter Script**:
   > *"Comparing this against FAT32: FAT32 locks you into rigid, coarse clusters where small files waste gigabytes of space, and sequential appends constantly fragment the FAT table. AuraFS provides a 4-tier storage spectrum (Inline, 512B, 4KB, 16KB), automatic extent coalescing, LZ4 compression, and hardware-accelerated allocation."*
