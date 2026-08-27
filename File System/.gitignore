@@ -1,0 +1,23 @@
+# Build artifacts
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+
+# Editor files
+.vscode/
+*.swp
+*~
+
+# macOS
+.DS_Store
+
+# Ignore disk images and executables
+*.img
+src/myshell
+src/debug
+src/debug2
+src/test_alloc
+src/test_userfs

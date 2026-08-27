@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraFS Architecture — Complete Edition (Slides 1–73)</title>
+  <meta name="description" content="A Zoned, Variable-Granularity Filesystem Presentation by Team AURA - Undertale Pixel Art Edition">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/undertale-theme.css">
+  <link rel="stylesheet" href="css/slides.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/print.css">
+</head>
+<body class="theme-treasuremap">
+
+  <!-- Background Animated Pixel Canvas -->
+  <canvas id="pixel-bg-canvas"></canvas>
+
+  <!-- CRT Scanline Retro Filter -->
+  <div class="crt-overlay"></div>
+
+  <!-- Screen Flash for Boss/Encounter Slides -->
+  <div class="encounter-flash"></div>
+
+  <!-- Chapter Transition Curtain Overlay -->
+  <div id="chapter-transition-overlay" class="chapter-overlay">
+    <div class="chapter-curtain-box">
+      <div class="chapter-overlay-soul"></div>
+      <div class="chapter-overlay-zone" id="chapter-overlay-zone">ZONE 01: SNOWDIN FOREST</div>
+      <div class="chapter-overlay-title" id="chapter-overlay-title">CHAPTER 2: DISK LAYOUT</div>
+      <div class="chapter-overlay-subtitle" id="chapter-overlay-subtitle">Storage Domains, 4KB Pages & Superblock</div>
+    </div>
+  </div>
+
+  <!-- Main Presentation Viewport -->
+  <main id="presentation-viewport">
+    <div class="slide-stage" id="slide-stage">
+      <!-- Slides are injected here dynamically by js/presentation-engine.js -->
+    </div>
+  </main>
+
+  <!-- Undertale HUD (Bottom Battle Bar) -->
+  <footer class="undertale-hud">
+    <div class="hud-player-stats">
+      <span class="hud-name"><span class="pixel-heart"></span> AURA</span>
+      <span class="hud-lv" id="hud-lv-val">LV 1</span>
+      <div class="hud-hp-wrapper">
+        <span class="hp-label">HP</span>
+        <div class="hp-bar-bg">
+          <div class="hp-bar-fill" id="hud-hp-fill" style="width: 10%;"></div>
+        </div>
+        <span class="hp-text" id="hud-hp-text">1/73</span>
+      </div>
+      <span id="hud-slide-num" class="text-xs" style="color: #ffffff; letter-spacing: 1px;">SLIDE 1 / 73</span>
+    </div>
+
+    <div class="hud-actions">
+      <button class="ut-btn" id="btn-prev" title="Previous Slide (Left Arrow / K)">
+        <span class="pixel-heart"></span> PREV
+      </button>
+      <button class="ut-btn" id="btn-next" title="Next Slide (Right Arrow / Space / J)">
+        <span class="pixel-heart"></span> NEXT
+      </button>
+      <button class="ut-btn" id="btn-map" title="Slide Overview Map (Key: O or M)">
+        <span class="pixel-star">★</span> MAP
+      </button>
+      <button class="ut-btn" id="btn-sound-toggle" title="Toggle 8-bit Audio (Key: S)">
+        <span class="pixel-heart"></span> SOUND
+      </button>
+      <button class="ut-btn" id="btn-crt" title="Toggle CRT Filter (Key: C)">
+        CRT
+      </button>
+    </div>
+  </footer>
+
+  <!-- Slide Map / Overview Grid Modal -->
+  <div id="slide-overview-modal">
+    <div class="overview-header">
+      <div class="overview-title"><span class="pixel-star-large">★</span> AURAFS WORLD MAP (ALL 73 SLIDES)</div>
+      <button class="ut-btn" id="btn-close-modal">✕ CLOSE</button>
+    </div>
+    <div class="overview-grid" id="overview-grid">
+      <!-- Grid items injected dynamically -->
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    // Configuration for Complete Version
+    window.PRESENTATION_MAX_SLIDES = 73;
+  </script>
+  <script src="js/slides-data.js"></script>
+  <script src="js/audio-synth.js"></script>
+  <script src="js/pixel-canvas.js"></script>
+  <script src="js/presentation-engine.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.dll
+*.so
+*.so.*
+*.dylib
+# Intentionally keeping libAura.a, so we don't ignore *.a
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*~
+*.tmp

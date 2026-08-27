@@ -1,0 +1,748 @@
+/* ==========================================================================
+   SLIDE LAYOUTS & PRESENTATION COMPONENTS
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Slide Container & Viewport
+   -------------------------------------------------------------------------- */
+#presentation-viewport {
+  position: relative;
+  width: 100vw;
+  height: calc(100vh - 64px); /* Leaving room for Undertale bottom HUD */
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.slide-stage {
+  position: relative;
+  width: 100%;
+  max-width: 1400px;
+  height: 100%;
+  max-height: 820px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 10;
+}
+
+.slide {
+  display: none;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  animation: slideFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide.active {
+  display: flex;
+}
+
+/* --------------------------------------------------------------------------
+   Slide Header (Zone Name, Chapter, Title, Subtitle)
+   -------------------------------------------------------------------------- */
+.slide-header {
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.slide-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.slide-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slide-zone-badge {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--accent-color);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 5px 12px;
+  border: 2px solid var(--accent-color);
+  letter-spacing: 1px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.25);
+  text-transform: uppercase;
+}
+
+.slide-num-badge {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-yellow);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 5px 12px;
+  border: 2px solid var(--ut-yellow);
+  letter-spacing: 1px;
+  box-shadow: 0 0 10px rgba(255, 255, 0, 0.25);
+}
+
+.slide-chapter {
+  font-family: var(--font-retro);
+  font-size: 15px;
+  color: var(--ut-gray-text);
+  letter-spacing: 1px;
+  text-shadow: 1px 1px #000000;
+}
+
+.slide-title-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  padding-bottom: 6px;
+}
+
+.slide-title {
+  font-family: var(--font-pixel);
+  font-size: 25px;
+  color: #ffffff;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 #000000, 0 0 12px rgba(255, 255, 255, 0.4);
+  line-height: 1.35;
+}
+
+.slide-subtitle {
+  font-family: var(--font-terminal);
+  font-size: 25px;
+  color: var(--ut-yellow);
+  letter-spacing: 0.8px;
+  text-shadow: 1px 1px 0 #000000;
+}
+
+/* --------------------------------------------------------------------------
+   Slide Body & Content Grids
+   -------------------------------------------------------------------------- */
+.slide-body {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-right: 6px;
+  max-height: calc(100% - 85px);
+}
+
+.slide-body::-webkit-scrollbar {
+  width: 6px;
+}
+.slide-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+}
+.slide-body::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+
+/* Grids */
+.undertale-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  width: 100%;
+}
+
+.grid-3-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: 100%;
+}
+
+.grid-2x3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+   Lists & Badges
+   -------------------------------------------------------------------------- */
+.pixel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pixel-list li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 20px;
+  color: var(--text-dim);
+}
+
+.pixel-list li::before {
+  content: '▶';
+  position: absolute;
+  left: 0;
+  color: var(--ut-yellow);
+  font-size: 12px;
+  top: 4px;
+}
+
+.pill-badge {
+  background-color: #11111e;
+  border: 2px solid var(--accent-color);
+  padding: 8px 12px;
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: #ffffff;
+}
+
+/* Highlight Colors */
+.hl-cyan { color: var(--ut-cyan) !important; font-weight: bold; }
+.hl-yellow { color: var(--ut-yellow) !important; font-weight: bold; }
+.hl-orange { color: var(--ut-orange) !important; font-weight: bold; }
+.hl-green { color: var(--ut-green) !important; font-weight: bold; }
+.hl-purple { color: var(--ut-purple) !important; font-weight: bold; }
+.hl-red { color: var(--ut-red) !important; font-weight: bold; }
+
+/* --------------------------------------------------------------------------
+   Quotes & Banners
+   -------------------------------------------------------------------------- */
+.quote-box {
+  background-color: #000000;
+  border-left: 6px solid var(--ut-yellow);
+  border-top: 2px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  border-right: 2px solid rgba(255, 255, 255, 0.2);
+  padding: 14px 20px;
+  font-family: var(--font-terminal);
+  font-size: 22px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+.end-part1-banner {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--ut-yellow);
+  color: #000000;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  text-align: center;
+  font-weight: bold;
+  letter-spacing: 2px;
+  box-shadow: 0 0 16px rgba(255, 255, 0, 0.6);
+  animation: pulseGlow 1.5s infinite alternate;
+}
+
+/* --------------------------------------------------------------------------
+   ASCII / Code Diagrams & Blocks
+   -------------------------------------------------------------------------- */
+.ascii-block, code, pre {
+  font-family: var(--font-mono);
+  background-color: #080811;
+  color: #a5f3fc;
+  padding: 10px 14px;
+  border: 1px solid var(--ut-gray-border);
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+  font-size: 17px;
+}
+
+.hl-code {
+  font-family: var(--font-mono);
+  background-color: #121226;
+  color: var(--ut-yellow);
+  padding: 8px 12px;
+  border: 2px solid var(--ut-yellow);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.good-block {
+  background-color: #062b14;
+  border: 2px solid var(--ut-green);
+  color: #bbf7d0;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+.bad-block {
+  background-color: #2e0909;
+  border: 2px solid var(--ut-red);
+  color: #fecaca;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Pipelines & Horizontal / Vertical Flows
+   -------------------------------------------------------------------------- */
+.pipeline-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.pipe-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid var(--border-color);
+  padding: 10px 16px;
+  font-size: 20px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.pipe-row:hover {
+  transform: translateX(6px);
+  border-color: var(--ut-yellow);
+}
+
+.pipe-badge {
+  background-color: var(--ut-yellow);
+  color: #000000;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 2px 8px;
+  font-weight: bold;
+}
+
+.pipeline-horizontal, .undertale-pipeline-horizontal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.pipe-node {
+  flex: 1;
+  min-width: 180px;
+  text-align: center;
+}
+
+.node-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-yellow);
+  margin-bottom: 6px;
+}
+
+.pipe-arrow {
+  color: var(--ut-yellow);
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* --------------------------------------------------------------------------
+   Battle Cards & QA Cards
+   -------------------------------------------------------------------------- */
+.battle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-title {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: var(--ut-yellow);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 4px;
+}
+
+.card-q {
+  font-size: 18px;
+  color: var(--ut-cyan);
+  font-weight: bold;
+}
+
+.card-ans {
+  font-size: 19px;
+  color: #ffffff;
+}
+
+.qa-mini-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.q-num {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--ut-yellow);
+}
+
+.q-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-cyan);
+}
+
+.q-ans {
+  font-size: 18px;
+  color: var(--text-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Tables (Heatmap, Matrix, Comparison)
+   -------------------------------------------------------------------------- */
+.pixel-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 19px;
+}
+
+.pixel-table th {
+  background-color: #121226;
+  color: var(--ut-yellow);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 10px 14px;
+  border: 2px solid var(--border-color);
+  text-align: left;
+}
+
+.pixel-table td {
+  padding: 8px 14px;
+  border: 1px solid var(--ut-gray-border);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+}
+
+.pixel-table tr.hl-row td {
+  background-color: rgba(255, 255, 0, 0.15);
+  border-color: var(--ut-yellow);
+  color: var(--ut-yellow);
+  font-weight: bold;
+}
+
+.badge-hot {
+  background: var(--ut-red);
+  color: #ffffff;
+  padding: 2px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+}
+.badge-med {
+  background: var(--ut-yellow);
+  color: #000000;
+  padding: 2px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+}
+.badge-low {
+  background: #333344;
+  color: #aaaaaa;
+  padding: 2px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+}
+
+/* --------------------------------------------------------------------------
+   Granularity Bars & Visual Meters
+   -------------------------------------------------------------------------- */
+.block-meter, .comp-bar {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  border: 2px solid #ffffff;
+  background-color: #000000;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.meter-used, .bar-fill.red-fill {
+  background-color: var(--ut-red);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+}
+
+.meter-wasted, .bar-fill.gray-fill {
+  background-color: #3b0707;
+  color: #ffaaaa;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  font-size: 16px;
+}
+
+.bar-fill.green-fill {
+  background-color: var(--ut-green);
+  color: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  font-weight: bold;
+}
+
+.bar-fill.dark-gray-fill {
+  background-color: #112211;
+  color: #88ff88;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  font-size: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Title & Final Slides Special Styles
+   -------------------------------------------------------------------------- */
+.slide[data-type="title"] .slide-title {
+  font-size: 48px;
+  color: var(--ut-yellow);
+  text-shadow: 4px 4px #000000, 0 0 20px rgba(255, 255, 0, 0.4);
+  text-align: center;
+  width: 100%;
+}
+
+.slide[data-type="title"] .slide-subtitle {
+  font-size: 28px;
+  text-align: center;
+  width: 100%;
+  color: #ffffff;
+  margin-bottom: 20px;
+}
+
+.save-point-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background-color: #000000;
+  border: 4px solid var(--ut-yellow);
+  padding: 16px;
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.4);
+}
+
+.save-text {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  color: var(--ut-yellow);
+  letter-spacing: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Feature Cards, Themes, Invariants & QA Enhancements (Enhanced VFX)
+   -------------------------------------------------------------------------- */
+.feature-card {
+  background: rgba(8, 8, 18, 0.95);
+  border: 3px solid var(--border-color);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: inset 0 0 0 1px #000000, 0 4px 12px rgba(0, 0, 0, 0.6);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: inset 0 0 0 1px #000000, 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px var(--accent-color);
+}
+
+.feature-num {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.feature-title {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.feature-desc {
+  font-size: 17px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.feature-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Border Accent Colors */
+.cyan-border { border-color: var(--ut-cyan) !important; }
+.yellow-border { border-color: var(--ut-yellow) !important; }
+.green-border { border-color: var(--ut-green) !important; }
+.orange-border { border-color: var(--ut-orange) !important; }
+.purple-border { border-color: var(--ut-purple) !important; }
+.red-border { border-color: var(--ut-red) !important; }
+
+/* Theme Colors for Battle Cards */
+.cyan-theme { border-color: var(--ut-cyan) !important; }
+.cyan-theme .card-title { color: var(--ut-cyan) !important; text-shadow: 0 0 8px rgba(0, 255, 255, 0.4); }
+
+.yellow-theme { border-color: var(--ut-yellow) !important; }
+.yellow-theme .card-title { color: var(--ut-yellow) !important; text-shadow: 0 0 8px rgba(255, 255, 0, 0.4); }
+
+.green-theme { border-color: var(--ut-green) !important; }
+.green-theme .card-title { color: var(--ut-green) !important; text-shadow: 0 0 8px rgba(0, 255, 102, 0.4); }
+
+.orange-theme { border-color: var(--ut-orange) !important; }
+.orange-theme .card-title { color: var(--ut-orange) !important; text-shadow: 0 0 8px rgba(255, 136, 0, 0.4); }
+
+.purple-theme { border-color: var(--ut-purple) !important; }
+.purple-theme .card-title { color: var(--ut-purple) !important; text-shadow: 0 0 8px rgba(168, 85, 247, 0.4); }
+
+.red-theme { border-color: var(--ut-red) !important; }
+.red-theme .card-title { color: var(--ut-red) !important; text-shadow: 0 0 8px rgba(255, 0, 0, 0.4); }
+
+/* QA Blocks */
+.qa-block {
+  background: rgba(12, 12, 22, 0.95);
+  border: 2px solid var(--border-color);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.qa-block:hover {
+  transform: translateY(-2px);
+  border-color: var(--ut-yellow);
+}
+
+.qa-q {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ut-yellow);
+  line-height: 1.3;
+}
+
+.qa-a {
+  font-size: 17px;
+  color: #ffffff;
+  line-height: 1.4;
+}
+
+/* Invariants & Coherence */
+.invariants-list, .coherence-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inv-card, .coh-item {
+  background: rgba(10, 10, 20, 0.9);
+  border: 2px solid var(--border-color);
+  padding: 10px 14px;
+  font-size: 18px;
+  color: #f1f5f9;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.inv-card:hover, .coh-item:hover {
+  transform: translateX(4px);
+  border-color: var(--ut-cyan);
+}
+
+.adapt-card {
+  background: rgba(12, 12, 24, 0.95);
+  border: 2px solid var(--border-color);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adapt-title {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+}
+
+.adapt-desc {
+  font-size: 17px;
+  color: var(--text-dim);
+}
+
+/* Visual Chain */
+.chain-flow-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.chain-link {
+  background: #111122;
+  border: 2px solid var(--ut-cyan);
+  padding: 8px 18px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #ffffff;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.chain-down {
+  font-size: 15px;
+  color: var(--ut-yellow);
+  font-family: var(--font-terminal);
+}
+
+.lifecycle-dual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pixel-star-large {
+  font-size: 28px;
+  color: var(--ut-yellow);
+  text-shadow: 0 0 12px rgba(255, 255, 0, 0.8);
+  animation: starTwinkle 1.8s infinite ease-in-out;
+  display: inline-block;
+}
+
+/* --------------------------------------------------------------------------
+   Utility Classes & Enhanced Contrast
+   -------------------------------------------------------------------------- */
+.mt-1 { margin-top: 4px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.text-xs { font-size: 16px !important; }
+.text-sm { font-size: 18px !important; }
+.text-lg { font-size: 24px !important; }
+.text-center { text-align: center; }
+.text-muted { color: #94a3b8 !important; }

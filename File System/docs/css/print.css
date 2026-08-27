@@ -1,0 +1,120 @@
+/* ==========================================================================
+   PRINT & PDF EXPORT STYLESHEET
+   ========================================================================== */
+
+@page {
+  size: 1920px 1080px;
+  margin: 0;
+}
+
+@media print {
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-sizing: border-box !important;
+  }
+
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    position: static !important;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    font-size: 20px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide interactive HUD, canvas, overlays, and modals in standard browser print */
+  .undertale-hud,
+  #pixel-bg-canvas,
+  .crt-overlay,
+  .encounter-flash,
+  #slide-overview-modal {
+    display: none !important;
+  }
+
+  #presentation-viewport {
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+  }
+
+  .slide-stage {
+    max-width: none !important;
+    max-height: none !important;
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Force every slide to be displayed and take exactly one 16:9 print page */
+  .slide {
+    display: flex !important;
+    width: 1920px !important;
+    height: 1080px !important;
+    min-height: 1080px !important;
+    max-height: 1080px !important;
+    box-sizing: border-box !important;
+    padding: 50px 70px !important;
+    page-break-before: always !important;
+    page-break-after: always !important;
+    break-before: page !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    background-color: #080812 !important;
+    border: 6px solid #ffffff !important;
+    position: relative !important;
+    overflow: hidden !important;
+    justify-content: space-between !important;
+    margin: 0 !important;
+  }
+
+  .slide:first-child {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+
+  .slide-header {
+    margin-bottom: 12px !important;
+  }
+
+  .slide-title {
+    font-size: 32px !important;
+  }
+
+  .slide-subtitle {
+    font-size: 26px !important;
+  }
+
+  .slide-body {
+    max-height: none !important;
+    overflow: visible !important;
+    font-size: 22px !important;
+  }
+
+  .undertale-box, .battle-card, .qa-mini-card, .pipe-node {
+    border-width: 3px !important;
+    box-shadow: none !important;
+  }
+
+  .ascii-block, code, pre {
+    font-size: 19px !important;
+  }
+
+  .pixel-table {
+    font-size: 20px !important;
+  }
+}
