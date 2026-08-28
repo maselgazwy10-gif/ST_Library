@@ -1,15 +1,15 @@
 <div align="center">
 
-![ST_Library Banner](./st_library_banner.jpg)
+![AURA Banner](./aura_banner.jpg)
 
-# ?? ST_Library Master Repository
+# ?? AURA File System & ToolBox
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![C Standard](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![Platform](https://img.shields.io/badge/Platform-Embedded%20%7C%20BareMetal-purple.svg)]()
 [![Status](https://img.shields.io/badge/Status-Active-success.svg)]()
 
-Welcome to the **ST_Library**! This master repository hosts powerful custom solutions for embedded systems, high-performance computing, and bare-metal microcontroller operations. 
+Welcome to the **AURA Master Repository**! This repository hosts powerful custom solutions for embedded systems, high-performance computing, and bare-metal microcontroller operations. 
 
 It is divided into two major interconnected projects: **AuraFS** and the **Development ToolBox**.
 
@@ -20,7 +20,7 @@ It is divided into two major interconnected projects: **AuraFS** and the **Devel
 
 ```mermaid
 graph TD;
-    A[ST_Library Master] --> B[File System / AuraFS]
+    A[AURA Repository] --> B[File System / AuraFS]
     A --> C[Development ToolBox]
     
     B --> D[src]
@@ -42,7 +42,7 @@ graph TD;
 ### ?? Key Features
 - **Extent-Based Allocation:** Radically reduces fragmentation using continuous block sequences.
 - **Zoned Architecture:** Multi-granularity zones for different sizes of data to minimize internal fragmentation.
-- **Interactive Visualizer:** A stunning HTML-based visualizer for tracking allocation blocks.
+- **Interactive Visualizer:** An Undertale-themed interactive HTML visualizer to track disk space and allocations with 2D character narratives!
 
 ### ?? How to Operate AuraFS
 
@@ -60,8 +60,9 @@ graph TD;
    ./myshell
    ```
    You will drop into the `AuraFS>` prompt where you can run commands like `format`, `mount`, `ls`, `touch`, `mkdir`, and `alloc_status`.
-4. **View Presentations & Docs:**
-   Check out the PDF documentation and markdown change logs inside `File System/presentation` for deep dives into the filesystem's architecture!
+4. **View Presentations & Interactive Disk Visualization:**
+   - Open `File System/visualization/aurafs_interactive_visualizer.html` in your web browser to play with the 2D retro-style disk allocation visualizer!
+   - Check out the PDF documentation and markdown change logs inside `File System/presentation` for deep dives into the filesystem's architecture.
 
 ---
 
