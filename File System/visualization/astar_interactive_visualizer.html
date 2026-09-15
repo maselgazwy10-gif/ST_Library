@@ -3,27 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A* Pathfinding Academy — Fullscreen Terrain & Hazard Simulator</title>
+    <title>A* Pathfinding Academy — Map & Sliders</title>
     
     <!-- Retro Fonts & Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --bg-canvas: #090d16;        /* Deep Space Midnight */
-            --bg-panel: #131d2e;         /* Polished Slate Navy */
-            --bg-card: #1e293b;          /* Elevated Slate */
-            
-            /* Undertale Vibrant Theme Colors */
-            --ut-gold: #fbbf24;          /* Amber 400 */
-            --ut-yellow: #fde047;        /* Yellow 300 */
-            --ut-cyan: #38bdf8;          /* Sky 400 */
-            --ut-green: #34d399;         /* Emerald 400 */
-            --ut-purple: #c084fc;        /* Purple 400 */
-            --ut-red: #f87171;           /* Red 400 */
-            --ut-orange: #fb923c;        /* Orange 400 */
-
+            --bg-canvas: #090d16;
+            --ut-gold: #fbbf24;
+            --ut-yellow: #fde047;
+            --ut-cyan: #38bdf8;
+            --ut-green: #34d399;
+            --ut-purple: #c084fc;
+            --ut-red: #f87171;
             --font-pixel: 'Press Start 2P', monospace;
             --font-retro: 'VT323', monospace;
             --font-code: 'Fira Code', monospace;
@@ -43,107 +37,23 @@
             background-color: var(--bg-canvas);
             color: #f8fafc;
             font-family: var(--font-retro);
-            font-size: 19px;
+            display: flex;
+            flex-direction: column;
             background-image: 
-                radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
-                radial-gradient(circle at 90% 15%, rgba(251, 191, 36, 0.08) 0%, transparent 45%),
-                radial-gradient(circle at 50% 95%, rgba(52, 211, 153, 0.06) 0%, transparent 50%);
+                radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.07) 0%, transparent 50%),
+                radial-gradient(circle at 85% 25%, rgba(251, 191, 36, 0.07) 0%, transparent 50%),
+                radial-gradient(circle at 50% 85%, rgba(52, 211, 153, 0.05) 0%, transparent 55%);
         }
 
-        /* Undertale Container Boxes */
-        .ut-box {
-            background-color: var(--bg-panel);
-            border: 2px solid #334155;
-            border-radius: 6px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-            position: relative;
-        }
-        .ut-box-gold { border-color: var(--ut-gold); box-shadow: 0 0 14px rgba(251, 191, 36, 0.25); }
-        .ut-box-cyan { border-color: var(--ut-cyan); box-shadow: 0 0 14px rgba(56, 189, 248, 0.25); }
-        .ut-box-green { border-color: var(--ut-green); box-shadow: 0 0 14px rgba(52, 211, 153, 0.25); }
-        .ut-box-purple { border-color: var(--ut-purple); box-shadow: 0 0 14px rgba(192, 132, 252, 0.25); }
-
-        /* CRT Filter */
-        .crt-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.12) 50%);
-            background-size: 100% 4px;
-            pointer-events: none;
-            z-index: 9999;
-            opacity: 0.18;
-        }
-        body.no-crt .crt-overlay { display: none; }
-
-        /* Pixel Soul Heart */
-        .pixel-heart {
-            display: inline-block;
-            width: 14px; height: 14px;
-            background-color: var(--ut-red);
-            clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 50% 75%, 18% 100%, 0% 35%);
-            filter: drop-shadow(0 0 5px rgba(248, 113, 113, 0.8));
-            animation: soulPulse 1.2s infinite alternate;
-            vertical-align: middle;
-            margin-right: 6px;
-        }
-        @keyframes soulPulse {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.2); }
+        /* Sliders Overlay Dock */
+        .sliders-bar {
+            background: rgba(19, 29, 46, 0.92);
+            backdrop-filter: blur(8px);
+            border-bottom: 2px solid #334155;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            z-index: 100;
         }
 
-        /* Buttons & Pills */
-        .ut-btn {
-            font-family: var(--font-pixel);
-            font-size: 8.5px;
-            padding: 6px 11px;
-            background: #1e293b;
-            color: #f8fafc;
-            border: 2px solid #475569;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.1s;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-        }
-        .ut-btn:hover:not(:disabled) {
-            background: var(--ut-gold);
-            color: #0f172a;
-            border-color: #fff;
-            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
-            transform: translateY(-1px);
-        }
-        .ut-btn.active {
-            background: var(--ut-cyan);
-            color: #0f172a;
-            border-color: #fff;
-            box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
-            font-weight: bold;
-        }
-        .ut-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .preset-btn {
-            font-family: var(--font-pixel);
-            font-size: 7.5px;
-            padding: 4px 8px;
-            background: #131d2e;
-            color: #94a3b8;
-            border: 1.5px solid #334155;
-            border-radius: 3px;
-            cursor: pointer;
-            transition: all 0.15s;
-            white-space: nowrap;
-        }
-        .preset-btn:hover { color: #fff; border-color: var(--ut-gold); background: #1e293b; }
-        .preset-btn.active {
-            color: #0f172a;
-            background: var(--ut-gold);
-            border-color: #fff;
-            font-weight: bold;
-        }
-
-        /* Cost Sliders */
         .cost-slider {
             -webkit-appearance: none;
             appearance: none;
@@ -158,8 +68,8 @@
         .cost-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 17px;
-            height: 17px;
+            width: 16px;
+            height: 16px;
             border-radius: 3px;
             border: 2px solid #fff;
             cursor: pointer;
@@ -170,23 +80,56 @@
         .slider-near::-webkit-slider-thumb { background: #f87171; box-shadow: 0 0 8px #f87171; }
         .cost-slider:hover::-webkit-slider-thumb { transform: scale(1.25); }
 
+        .ut-btn {
+            font-family: var(--font-pixel);
+            font-size: 8.5px;
+            padding: 6px 12px;
+            background: #1e293b;
+            color: #f8fafc;
+            border: 2px solid #475569;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .ut-btn:hover {
+            background: var(--ut-gold);
+            color: #0f172a;
+            border-color: #fff;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+            transform: translateY(-1px);
+        }
+
         /* ==========================================================================
-           RICH PIXEL TEXTURES FOR MAP TILES
+           FULLSCREEN GRID & RICH PIXEL TEXTURES
            ========================================================================== */
         
+        #map-stage {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            overflow: hidden;
+        }
+
         #grid-container {
             display: grid;
-            gap: 1.5px;
+            gap: 2px;
             background: #020617;
-            padding: 5px;
+            padding: 6px;
             border-radius: 6px;
-            border: 2px solid #334155;
+            border: 2.5px solid #334155;
             width: 100%;
             height: 100%;
             max-width: 100%;
             max-height: 100%;
             aspect-ratio: 16 / 9;
-            margin: auto;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
         }
 
         .map-cell {
@@ -196,18 +139,17 @@
             justify-content: center;
             border-radius: 2px;
             font-family: var(--font-code);
-            font-size: 7px;
             cursor: pointer;
-            transition: transform 0.1s, filter 0.15s;
+            transition: transform 0.08s;
             overflow: hidden;
         }
         .map-cell:hover {
             outline: 2px solid #fff;
             z-index: 30;
-            transform: scale(1.18);
+            transform: scale(1.15);
         }
 
-        /* 1. NORMAL PLAINS TILE */
+        /* 1. Normal Plains Tile */
         .tile-normal {
             background-color: #1a2538;
             border: 1px solid #28374f;
@@ -218,7 +160,7 @@
             background-position: 0 0, 4px 4px;
         }
 
-        /* 2. RICH ROCKY MOUNTAIN TEXTURE (Craggy chiseled facets, shadows & peaks) */
+        /* 2. Rich Rocky Mountain Crags (Chiseled facets, shadows & peaks) */
         .tile-rock {
             background-color: #44403c;
             border: 1px solid #78716c;
@@ -233,13 +175,13 @@
         }
         .tile-rock::after {
             content: '▲';
-            font-size: 9.5px;
+            font-size: 10px;
             color: #d6d3d1;
             text-shadow: 1px 1px 0 #1c1917;
             opacity: 0.9;
         }
 
-        /* 3. RICH SANDY DESERT DUNE TEXTURE (Wavy ripples & gold sediment specks) */
+        /* 3. Rich Sandy Desert Dunes (Wavy ripple lines & gold specks) */
         .tile-sand {
             background-color: #9a6813;
             border: 1px solid #d97706;
@@ -250,17 +192,17 @@
                 linear-gradient(-45deg, transparent 46%, #fef08a 48%, #fef08a 52%, transparent 54%);
             background-size: 8px 8px, 8px 8px, 16px 16px, 16px 16px;
             background-position: 0 0, 4px 4px, 0 0, 8px 8px;
-            box-shadow: inset 0 0 4px rgba(254, 240, 138, 0.2);
+            box-shadow: inset 0 0 4px rgba(254, 240, 138, 0.25);
         }
         .tile-sand::after {
             content: '░';
-            font-size: 11px;
+            font-size: 12px;
             color: #fef08a;
-            opacity: 0.8;
+            opacity: 0.85;
             font-weight: bold;
         }
 
-        /* 4. RICH IMPASSABLE OBSTACLE WALL (Heavy obsidian fortress masonry with beveled stone mortar) */
+        /* 4. Rich Impassable Fortress Obstacle Wall */
         .tile-wall {
             background-color: #0b101b;
             border: 1.5px solid #1e293b;
@@ -273,38 +215,30 @@
         }
         .tile-wall::after {
             content: '■';
-            font-size: 10px;
+            font-size: 11px;
             color: #64748b;
             text-shadow: 0 0 3px #000;
         }
 
-        /* Near-Obstacle Hazard Aura */
+        /* Near-Obstacle Hazard Warning Glow */
         .hazard-1 {
-            box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.65), inset 0 0 6px rgba(248, 113, 113, 0.4) !important;
+            box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.7), inset 0 0 6px rgba(248, 113, 113, 0.45) !important;
         }
         .hazard-2 {
-            box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.4) !important;
+            box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.45) !important;
         }
 
-        /* Search States */
-        .cell-open {
-            background: rgba(56, 189, 248, 0.4) !important;
-            border-color: #38bdf8 !important;
-        }
-        .cell-closed {
-            background: rgba(192, 132, 252, 0.35) !important;
-            border-color: #c084fc !important;
-        }
+        /* A* Path Marking */
         .cell-path {
             background: #fbbf24 !important;
             border-color: #ffffff !important;
-            box-shadow: 0 0 12px #fbbf24, inset 0 0 4px #ffffff;
+            box-shadow: 0 0 14px #fbbf24, inset 0 0 5px #ffffff;
             z-index: 20;
             animation: pathGlow 0.7s infinite alternate;
         }
         @keyframes pathGlow {
             0% { transform: scale(1); filter: brightness(1); }
-            100% { transform: scale(1.1); filter: brightness(1.3); }
+            100% { transform: scale(1.12); filter: brightness(1.3); }
         }
 
         /* Start & Goal Nodes */
@@ -321,7 +255,7 @@
             z-index: 25;
         }
 
-        /* Animated Character Sprite */
+        /* Animated Character Sprite at Start */
         .char-sprite {
             position: absolute;
             width: 28px;
@@ -386,385 +320,131 @@
             100% { transform: rotate(360deg) scale(1); }
         }
 
-        .log-line { font-family: var(--font-code); font-size: 11px; line-height: 1.35; padding: 2px 0; border-bottom: 1px dashed #334155; }
-        .log-line .ts { color: #64748b; margin-right: 6px; font-size: 9px; }
-
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--ut-gold); }
+        /* Pixel Soul Heart */
+        .pixel-heart {
+            display: inline-block;
+            width: 13px; height: 13px;
+            background-color: var(--ut-red);
+            clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 50% 75%, 18% 100%, 0% 35%);
+            filter: drop-shadow(0 0 5px rgba(248, 113, 113, 0.8));
+            vertical-align: middle;
+            margin-right: 4px;
+        }
     </style>
 </head>
-<body class="flex flex-col">
+<body>
 
-    <!-- CRT Filter Overlay -->
-    <div class="crt-overlay"></div>
-
-    <!-- Top Header: Action HUD & Controls -->
-    <header class="bg-[#101726] border-b-2 border-[#334155] px-3 py-1.5 flex items-center justify-between shrink-0 gap-2 z-50">
+    <!-- TOP DOCK: ONLY THE 3 COST WEIGHT SLIDERS & RANDOMIZE BUTTON -->
+    <div class="sliders-bar px-6 py-2.5 flex items-center justify-between gap-6 shrink-0">
         
-        <!-- Brand & Soul -->
-        <div class="flex items-center gap-2.5 shrink-0">
+        <!-- Brand Indicator -->
+        <div class="flex items-center gap-2 shrink-0">
             <span class="pixel-heart"></span>
-            <div>
-                <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* PATHFINDING ACADEMY</span>
-                <span class="text-[10px] text-slate-300 font-mono block">DYNAMIC TERRAIN, HAZARD PENALTY & TEXTURED SIMULATOR</span>
-            </div>
+            <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* PATHFINDER</span>
         </div>
 
-        <!-- Presets & Randomizer -->
-        <div class="flex items-center gap-1.5 bg-[#090d16] p-1 rounded border border-slate-700 shrink-0">
-            <span class="text-[9px] font-mono text-slate-400 px-1">MAPS:</span>
-            <button class="preset-btn active" data-preset="mountain">Mountain Pass</button>
-            <button class="preset-btn" data-preset="choke">Chokepoints</button>
-            <button class="preset-btn" data-preset="dune_valley">Dune vs Ridge</button>
-            <button class="preset-btn" data-preset="clear">Plains</button>
-            <button class="ut-btn bg-purple-950/80 border-purple-500 text-purple-300 hover:bg-purple-500 hover:text-black font-bold" id="btn-randomize" title="Generate procedural random obstacle, sand & rock map!">
+        <!-- 3 Cursors (Sliders) -->
+        <div class="flex-1 flex items-center justify-around gap-8 max-w-5xl">
+            
+            <!-- Slider 1: Rocky Structure Weight -->
+            <div class="flex-1 flex flex-col gap-0.5">
+                <div class="flex justify-between items-center text-xs font-mono">
+                    <span class="flex items-center gap-1 font-bold text-stone-300">
+                        <span>▲</span> ROCK WEIGHT (W_rock)
+                    </span>
+                    <span class="text-yellow-300 font-bold text-sm" id="val-rock">4.0×</span>
+                </div>
+                <input type="range" min="0" max="15" step="0.5" value="4.0" class="cost-slider slider-rock" id="slider-rock">
+            </div>
+
+            <!-- Slider 2: Sandy Structure Weight -->
+            <div class="flex-1 flex flex-col gap-0.5">
+                <div class="flex justify-between items-center text-xs font-mono">
+                    <span class="flex items-center gap-1 font-bold text-yellow-300">
+                        <span>░</span> SAND WEIGHT (W_sand)
+                    </span>
+                    <span class="text-yellow-300 font-bold text-sm" id="val-sand">2.5×</span>
+                </div>
+                <input type="range" min="0" max="15" step="0.5" value="2.5" class="cost-slider slider-sand" id="slider-sand">
+            </div>
+
+            <!-- Slider 3: Near-Obstacle Clearance Penalty -->
+            <div class="flex-1 flex flex-col gap-0.5">
+                <div class="flex justify-between items-center text-xs font-mono">
+                    <span class="flex items-center gap-1 font-bold text-red-400">
+                        <span>⚠️</span> NEAR-OBSTACLE HAZARD (W_near)
+                    </span>
+                    <span class="text-yellow-300 font-bold text-sm" id="val-near">5.0×</span>
+                </div>
+                <input type="range" min="0" max="20" step="0.5" value="5.0" class="cost-slider slider-near" id="slider-near">
+            </div>
+
+        </div>
+
+        <!-- Re-Randomize Button -->
+        <div class="flex items-center gap-2 shrink-0">
+            <button class="ut-btn bg-purple-950/80 border-purple-500 text-purple-300 hover:bg-purple-500 hover:text-black font-bold" id="btn-randomize" title="Randomize structure locations (Hotkey: R)">
                 <span>🎲</span> RANDOMIZE MAP
             </button>
         </div>
+    </div>
 
-        <!-- Master Execution Controls -->
-        <div class="flex items-center gap-1.5 shrink-0">
-            <button class="ut-btn bg-emerald-950/80 border-emerald-500 text-emerald-300" id="btn-play">
-                <span style="color: var(--ut-green);">▶</span> RUN A*
-            </button>
-            <button class="ut-btn" id="btn-walk" title="Watch animated hero walk the path">
-                <span style="color: var(--ut-yellow);">🚶</span> WALK
-            </button>
-            <button class="ut-btn" id="btn-step"><span>⏭</span> STEP</button>
-            <button class="ut-btn" id="btn-clear"><span>↺</span> CLEAR</button>
-            <button class="ut-btn" id="btn-fullscreen" title="Toggle Fullscreen Canvas">
-                <span>⛶</span> FULLSCREEN
-            </button>
-            <button class="ut-btn" id="btn-sound"><span>🔊</span> SOUND</button>
-            <button class="ut-btn" id="btn-crt">CRT</button>
+    <!-- MAIN MAP CANVAS (FILLS ENTIRE SCREEN) -->
+    <main id="map-stage">
+        <div id="grid-container"></div>
+
+        <!-- Animated Character Sprite at the foot of Start Point -->
+        <div class="char-sprite" id="character-sprite" style="display: none;">
+            <div class="char-hat"></div>
+            <div class="char-body">
+                <div class="char-eyes">
+                    <div class="char-eye"></div>
+                    <div class="char-eye"></div>
+                </div>
+            </div>
+            <div class="char-feet">
+                <div class="char-foot"></div>
+                <div class="char-foot"></div>
+            </div>
         </div>
-    </header>
-
-    <!-- Main Fullscreen Workspace -->
-    <main class="flex-1 flex overflow-hidden p-2.5 gap-2.5">
-        
-        <!-- Left 75%: Giant Map Canvas Arena -->
-        <div class="w-9/12 flex flex-col gap-2 overflow-hidden">
-            
-            <!-- Map Grid Box (Fills entire height) -->
-            <div class="ut-box ut-box-cyan flex-1 flex flex-col p-2 overflow-hidden relative">
-                
-                <!-- Map Toolbar & Legend -->
-                <div class="flex justify-between items-center border-b border-cyan-400/30 pb-1.5 mb-1.5 font-mono text-xs shrink-0">
-                    <div class="flex items-center gap-2">
-                        <span class="text-cyan-300 font-bold" style="font-family: var(--font-pixel); font-size: 8.5px;">MAP ARENA (32 × 18)</span>
-                        <span class="text-slate-400 text-[10.5px]">[CLICK ANYWHERE TO REPOSITION HERO OR PAINT TERRAIN]</span>
-                    </div>
-
-                    <!-- Brushes -->
-                    <div class="flex items-center gap-1">
-                        <span class="text-[9.5px] text-slate-400 mr-1">BRUSH:</span>
-                        <button class="ut-btn active" id="brush-start">HERO 🚩</button>
-                        <button class="ut-btn" id="brush-wall">WALL ■</button>
-                        <button class="ut-btn" id="brush-rock">ROCK ▲</button>
-                        <button class="ut-btn" id="brush-sand">SAND ░</button>
-                        <button class="ut-btn" id="brush-clear">PLAIN</button>
-                    </div>
-                </div>
-
-                <!-- Giant Grid Canvas Stage -->
-                <div class="flex-1 relative flex items-center justify-center overflow-hidden" id="stage-wrapper">
-                    <div id="grid-container"></div>
-                    
-                    <!-- Walking Hero Sprite -->
-                    <div class="char-sprite" id="character-sprite" style="display: none;">
-                        <div class="char-hat"></div>
-                        <div class="char-body">
-                            <div class="char-eyes">
-                                <div class="char-eye"></div>
-                                <div class="char-eye"></div>
-                            </div>
-                        </div>
-                        <div class="char-feet">
-                            <div class="char-foot"></div>
-                            <div class="char-foot"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bottom Grid Legend -->
-                <div class="flex items-center justify-between border-t border-slate-700 pt-1.5 mt-1.5 font-mono text-[11px] text-slate-300 shrink-0">
-                    <div class="flex items-center gap-3">
-                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 tile-normal border border-slate-500 rounded-sm"></span> Normal (1.0)</span>
-                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 tile-sand rounded-sm"></span> Sand (1 + W_sand)</span>
-                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 tile-rock rounded-sm"></span> Rock (1 + W_rock)</span>
-                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 tile-wall rounded-sm"></span> Obstacle (∞)</span>
-                        <span class="flex items-center gap-1.5"><span class="w-3.5 h-3.5 bg-red-400/20 border border-red-400 rounded-sm"></span> Hazard Aura</span>
-                    </div>
-                    <div class="flex items-center gap-2.5">
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-sky-400/40 border border-sky-400 rounded-sm"></span> Open</span>
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-400/30 border border-purple-400 rounded-sm"></span> Closed</span>
-                        <span class="flex items-center gap-1 font-bold text-yellow-300"><span class="w-3 h-3 bg-amber-400 border border-white rounded-sm"></span> A* Path</span>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Console Log -->
-            <div class="h-28 ut-box ut-box-gold p-2 flex flex-col shrink-0 overflow-hidden">
-                <div class="flex justify-between items-center border-b border-amber-400/30 pb-1 mb-1">
-                    <div class="text-[9.5px] font-bold text-yellow-300" style="font-family: var(--font-pixel);">
-                        <span class="pixel-heart"></span> HARDWARE ALGORITHMIC TRACE & A* MATH LOG
-                    </div>
-                    <span class="text-[10px] text-slate-400 font-mono" id="a-star-stats">Nodes Explored: 0 | Path Cost: 0.00</span>
-                </div>
-                <div class="flex-1 overflow-y-auto" id="console-log"></div>
-            </div>
-
-        </div>
-
-        <!-- Right 25%: 3 Cursors, Live Math & Cell Inspector -->
-        <div class="w-3/12 flex flex-col gap-2 overflow-hidden">
-            
-            <!-- 3 Cursors / Sliders Card -->
-            <div class="ut-box ut-box-purple p-2.5 flex flex-col gap-2 shrink-0">
-                <div class="flex justify-between items-center border-b border-purple-400/30 pb-1">
-                    <span class="text-[9.5px] font-bold text-purple-300" style="font-family: var(--font-pixel);">
-                        ★ 3 COST WEIGHT CURSORS
-                    </span>
-                    <button class="text-[9px] text-yellow-300 font-mono hover:underline" id="btn-reset-weights">RESET</button>
-                </div>
-
-                <!-- Cursor 1: Rocky Structure Weight -->
-                <div class="flex flex-col gap-0.5">
-                    <div class="flex justify-between items-center text-xs font-mono">
-                        <span class="flex items-center gap-1 font-bold text-stone-300">
-                            <span>▲</span> ROCK WEIGHT (W_rock)
-                        </span>
-                        <span class="text-yellow-300 font-bold text-sm" id="val-rock">4.0×</span>
-                    </div>
-                    <input type="range" min="0" max="15" step="0.5" value="4.0" class="cost-slider slider-rock" id="slider-rock">
-                    <span class="text-[9.5px] text-slate-400 font-mono leading-tight">Rugged crags. High cost forces long detours.</span>
-                </div>
-
-                <!-- Cursor 2: Sandy Structure Weight -->
-                <div class="flex flex-col gap-0.5">
-                    <div class="flex justify-between items-center text-xs font-mono">
-                        <span class="flex items-center gap-1 font-bold text-yellow-300">
-                            <span>░</span> SAND WEIGHT (W_sand)
-                        </span>
-                        <span class="text-yellow-300 font-bold text-sm" id="val-sand">2.5×</span>
-                    </div>
-                    <input type="range" min="0" max="15" step="0.5" value="2.5" class="cost-slider slider-sand" id="slider-sand">
-                    <span class="text-[9.5px] text-slate-400 font-mono leading-tight">Loose sand friction. Moderate drag.</span>
-                </div>
-
-                <!-- Cursor 3: Near-Obstacle Clearance Penalty -->
-                <div class="flex flex-col gap-0.5">
-                    <div class="flex justify-between items-center text-xs font-mono">
-                        <span class="flex items-center gap-1 font-bold text-red-400">
-                            <span>⚠️</span> NEAR-OBSTACLE (W_near)
-                        </span>
-                        <span class="text-yellow-300 font-bold text-sm" id="val-near">5.0×</span>
-                    </div>
-                    <input type="range" min="0" max="20" step="0.5" value="5.0" class="cost-slider slider-near" id="slider-near">
-                    <span class="text-[9.5px] text-slate-400 font-mono leading-tight">Safety buffer. Centers paths in open corridors.</span>
-                </div>
-            </div>
-
-            <!-- Mathematical Formula Breakdown -->
-            <div class="ut-box ut-box-green p-2 flex flex-col gap-1 shrink-0">
-                <span class="text-[9px] font-bold text-emerald-300 border-b border-emerald-400/30 pb-0.5" style="font-family: var(--font-pixel);">
-                    A* MATHEMATICAL FORMULA
-                </span>
-                
-                <div class="bg-[#090d16] p-1.5 rounded border border-slate-700 font-mono text-xs flex flex-col gap-0.5">
-                    <div class="text-yellow-300 font-bold">f(n) = g(n) + h(n)</div>
-                    <div class="text-[10px] text-slate-300">
-                        • <span class="text-sky-400">g(n)</span>: Exact accumulated path cost<br>
-                        • <span class="text-purple-400">h(n)</span>: Euclidean distance to goal<br>
-                        • <span class="text-emerald-400">Step</span> = dist × (1 + W_rock·R + W_sand·S + W_near·H)
-                    </div>
-                </div>
-            </div>
-
-            <!-- Live Tile Inspector -->
-            <div class="ut-box flex-1 p-2.5 flex flex-col gap-1 overflow-y-auto">
-                <div class="flex justify-between items-center border-b border-slate-600 pb-1">
-                    <span class="text-[9.5px] font-bold text-cyan-300" style="font-family: var(--font-pixel);">
-                        CELL INSPECTOR
-                    </span>
-                    <span class="text-xs text-yellow-300 font-mono font-bold" id="insp-coord">(X: --, Y: --)</span>
-                </div>
-
-                <div class="flex flex-col gap-1 text-xs font-mono mt-1 text-slate-300" id="insp-body">
-                    <div class="flex justify-between"><span>Terrain:</span><span class="font-bold text-white" id="insp-type">Hover cell</span></div>
-                    <div class="flex justify-between"><span>Base Cost:</span><span class="text-slate-400" id="insp-base">--</span></div>
-                    <div class="flex justify-between text-stone-300"><span>Rock Add:</span><span id="insp-rock">--</span></div>
-                    <div class="flex justify-between text-yellow-300"><span>Sand Add:</span><span id="insp-sand">--</span></div>
-                    <div class="flex justify-between text-red-400"><span>Hazard Add:</span><span id="insp-hazard">--</span></div>
-                    <div class="border-t border-slate-700 pt-1 flex justify-between font-bold text-emerald-400"><span>Step Cost:</span><span id="insp-total">--</span></div>
-                    <div class="border-t border-slate-700 pt-1 flex justify-between"><span>g-cost (start):</span><span class="text-sky-300" id="insp-g">--</span></div>
-                    <div class="flex justify-between"><span>h-cost (goal):</span><span class="text-purple-300" id="insp-h">--</span></div>
-                    <div class="flex justify-between font-bold text-yellow-300"><span>f-score (g+h):</span><span id="insp-f">--</span></div>
-                </div>
-            </div>
-
-        </div>
-
     </main>
 
-    <!-- Bottom Undertale Battle HUD -->
-    <footer class="bg-[#101726] border-t-2 border-[#334155] px-4 py-1 flex items-center justify-between shrink-0 font-mono text-xs">
-        <div class="flex items-center gap-4">
-            <span class="font-bold text-red-400" style="font-family: var(--font-pixel);"><span class="pixel-heart"></span> HERO</span>
-            <span class="font-bold text-yellow-300" style="font-family: var(--font-pixel);">LV 20</span>
-            <div class="flex items-center gap-2">
-                <span style="font-family: var(--font-pixel); font-size: 8px;">DETERMINATION</span>
-                <div class="w-24 h-2.5 bg-slate-700 border border-slate-400 rounded-sm overflow-hidden">
-                    <div class="h-full bg-yellow-400" style="width: 100%;"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-3">
-            <span class="text-slate-300 text-[11px]" id="hud-info">A* Path Ready. Click grid to move Hero start point or click RANDOMIZE MAP!</span>
-            <span class="text-yellow-400" style="font-family: var(--font-pixel); font-size: 8px;">[SPACE: RUN | R: RANDOMIZE]</span>
-        </div>
-    </footer>
-
-    <!-- A* Engine & Interactive Visualizer Script -->
+    <!-- A* Pathfinding Logic -->
     <script>
-        // 8-Bit Web Audio Synthesizer
-        class RetroAudio {
-            constructor() {
-                this.ctx = null;
-                this.muted = false;
-            }
-            init() {
-                if (!this.ctx) {
-                    const AC = window.AudioContext || window.webkitAudioContext;
-                    this.ctx = new AC();
-                }
-                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
-            }
-            playTone(freq, type='square', duration=0.05, vol=0.2) {
-                if (this.muted) return;
-                this.init();
-                try {
-                    const now = this.ctx.currentTime;
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = type;
-                    osc.frequency.setValueAtTime(freq, now);
-                    gain.gain.setValueAtTime(vol, now);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-                    osc.connect(gain);
-                    gain.connect(this.ctx.destination);
-                    osc.start(now);
-                    osc.stop(now + duration);
-                } catch(e) {}
-            }
-            blip() { this.playTone(260 + Math.random() * 90, 'square', 0.03, 0.15); }
-            step() { this.playTone(180, 'triangle', 0.04, 0.2); }
-            chime() {
-                const notes = [523.25, 659.25, 783.99, 1046.50];
-                notes.forEach((n, i) => {
-                    setTimeout(() => this.playTone(n, 'sine', 0.14, 0.25), i * 75);
-                });
-            }
-            randomWhoosh() {
-                const notes = [300, 420, 560, 720];
-                notes.forEach((n, i) => {
-                    setTimeout(() => this.playTone(n, 'square', 0.08, 0.2), i * 40);
-                });
-            }
-            error() { this.playTone(120, 'sawtooth', 0.2, 0.3); }
-        }
-
-        const audio = new RetroAudio();
-
-        // Grid Dimensions (32 columns × 18 rows)
         const COLS = 32;
         const ROWS = 18;
 
-        // Tile Types
         const TILE_NORMAL = 0;
         const TILE_ROCK   = 1;
         const TILE_SAND   = 2;
         const TILE_WALL   = 3;
 
-        // State
         let grid = [];
         let hazardMap = [];
         let startPos = { x: 1, y: 9 };
         let goalPos  = { x: 30, y: 9 };
 
-        // Cost Weights
         let weightRock = 4.0;
         let weightSand = 2.5;
         let weightNear = 5.0;
 
-        // Interaction
-        let currentBrush = 'start'; // 'start', 'wall', 'rock', 'sand', 'clear'
-        let isMouseDown = false;
-        let isWalking = false;
-
-        // A* State
-        let openSet = [];
-        let closedSet = new Set();
         let pathNodes = [];
         let nodeDetails = new Map();
+        let closedSet = new Set();
+        let openSet = [];
 
         const DOM = {
             gridContainer: document.getElementById('grid-container'),
-            stageWrapper: document.getElementById('stage-wrapper'),
+            mapStage: document.getElementById('map-stage'),
             charSprite: document.getElementById('character-sprite'),
-            consoleLog: document.getElementById('console-log'),
-            statsLabel: document.getElementById('a-star-stats'),
             sliderRock: document.getElementById('slider-rock'),
             sliderSand: document.getElementById('slider-sand'),
             sliderNear: document.getElementById('slider-near'),
             valRock: document.getElementById('val-rock'),
             valSand: document.getElementById('val-sand'),
             valNear: document.getElementById('val-near'),
-            btnPlay: document.getElementById('btn-play'),
-            btnWalk: document.getElementById('btn-walk'),
-            btnStep: document.getElementById('btn-step'),
-            btnClear: document.getElementById('btn-clear'),
-            btnRandomize: document.getElementById('btn-randomize'),
-            btnFullscreen: document.getElementById('btn-fullscreen'),
-            btnSound: document.getElementById('btn-sound'),
-            btnCrt: document.getElementById('btn-crt'),
-            btnResetWeights: document.getElementById('btn-reset-weights'),
-            presetBtns: document.querySelectorAll('.preset-btn'),
-            brushBtns: {
-                start: document.getElementById('brush-start'),
-                wall: document.getElementById('brush-wall'),
-                rock: document.getElementById('brush-rock'),
-                sand: document.getElementById('brush-sand'),
-                clear: document.getElementById('brush-clear')
-            },
-            inspCoord: document.getElementById('insp-coord'),
-            inspType: document.getElementById('insp-type'),
-            inspBase: document.getElementById('insp-base'),
-            inspRock: document.getElementById('insp-rock'),
-            inspSand: document.getElementById('insp-sand'),
-            inspHazard: document.getElementById('insp-hazard'),
-            inspTotal: document.getElementById('insp-total'),
-            inspG: document.getElementById('insp-g'),
-            inspH: document.getElementById('insp-h'),
-            inspF: document.getElementById('insp-f')
+            btnRandomize: document.getElementById('btn-randomize')
         };
-
-        const sleep = ms => new Promise(res => setTimeout(res, ms));
-
-        function log(msg) {
-            const now = new Date();
-            const ts = `${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}.${now.getMilliseconds().toString().padStart(3,'0')}`;
-            const div = document.createElement('div');
-            div.className = 'log-line';
-            div.innerHTML = `<span class="ts">[${ts}]</span> ${msg}`;
-            DOM.consoleLog.appendChild(div);
-            DOM.consoleLog.scrollTop = DOM.consoleLog.scrollHeight;
-        }
 
         // Initialize 2D Grid
         function initGrid() {
@@ -780,7 +460,7 @@
             }
         }
 
-        // Compute Proximity Hazard Field (Near-Obstacle Areas)
+        // Proximity Hazard Field (Near-Obstacle Areas)
         function computeHazardMap() {
             for (let y = 0; y < ROWS; y++) {
                 for (let x = 0; x < COLS; x++) {
@@ -801,9 +481,9 @@
                             }
                         }
                     }
-                    if (minD <= 1.0) hazardMap[y][x] = 1.0;          // Direct neighbor
-                    else if (minD <= 1.5) hazardMap[y][x] = 0.5;     // Diagonal
-                    else if (minD <= 2.1) hazardMap[y][x] = 0.25;    // 2-tile buffer
+                    if (minD <= 1.0) hazardMap[y][x] = 1.0;
+                    else if (minD <= 1.5) hazardMap[y][x] = 0.5;
+                    else if (minD <= 2.1) hazardMap[y][x] = 0.25;
                     else hazardMap[y][x] = 0.0;
                 }
             }
@@ -819,26 +499,19 @@
                 for (let x = 0; x < COLS; x++) {
                     const cell = document.createElement('div');
                     cell.className = 'map-cell tile-normal';
-                    cell.dataset.x = x;
-                    cell.dataset.y = y;
                     cell.id = `cell-${x}-${y}`;
 
-                    cell.addEventListener('mousedown', (e) => {
-                        isMouseDown = true;
-                        handleCellInteraction(x, y);
-                    });
-
-                    cell.addEventListener('mouseenter', (e) => {
-                        if (isMouseDown && currentBrush !== 'start') {
-                            handleCellInteraction(x, y);
-                        }
-                        inspectCell(x, y);
+                    // Clicking any tile relocates start point and tests path immediately
+                    cell.addEventListener('click', () => {
+                        if (grid[y][x] === TILE_WALL) return;
+                        startPos = { x, y };
+                        updateCellVisuals();
+                        runAStarInstant();
                     });
 
                     DOM.gridContainer.appendChild(cell);
                 }
             }
-            window.addEventListener('mouseup', () => { isMouseDown = false; });
             window.addEventListener('resize', () => { positionCharacterSprite(startPos.x, startPos.y); });
         }
 
@@ -880,46 +553,23 @@
             const cell = document.getElementById(`cell-${gx}-${gy}`);
             if (!cell || !DOM.charSprite) return;
             const rect = cell.getBoundingClientRect();
-            const wrapRect = DOM.stageWrapper.getBoundingClientRect();
+            const wrapRect = DOM.mapStage.getBoundingClientRect();
 
             DOM.charSprite.style.display = 'flex';
             DOM.charSprite.style.left = `${rect.left - wrapRect.left + rect.width / 2 - 14}px`;
             DOM.charSprite.style.top = `${rect.top - wrapRect.top - 24}px`;
         }
 
-        // Cell Interaction
-        function handleCellInteraction(x, y) {
-            if (currentBrush === 'start') {
-                if (grid[y][x] === TILE_WALL) return;
-                startPos = { x, y };
-                audio.step();
-                log(`Hero Start Point moved to (${x}, ${y})!`);
-            } else if (currentBrush === 'wall') {
-                if ((x === startPos.x && y === startPos.y) || (x === goalPos.x && y === goalPos.y)) return;
-                grid[y][x] = TILE_WALL;
-                audio.blip();
-            } else if (currentBrush === 'rock') {
-                grid[y][x] = TILE_ROCK;
-                audio.blip();
-            } else if (currentBrush === 'sand') {
-                grid[y][x] = TILE_SAND;
-                audio.blip();
-            } else if (currentBrush === 'clear') {
-                grid[y][x] = TILE_NORMAL;
-            }
-            updateCellVisuals();
-            runAStarInstant();
-        }
-
         // =========================================================================
-        // PROCEDURAL MAP RANDOMIZER (Cluster-based generation with guaranteed path)
+        // PROCEDURAL RANDOMIZATION OF STRUCTURE LOCATIONS
         // =========================================================================
-        function randomizeMap() {
+        function randomizeStructures() {
             initGrid();
-            audio.randomWhoosh();
-            log("🎲 Procedural Map Generator: Synthesizing random obstacles, rocky ridges & sand dunes...");
 
-            // Keep start and goal clear
+            // Randomize start position on far left (column 1, random row 2..15)
+            startPos = { x: 1, y: 2 + Math.floor(Math.random() * (ROWS - 4)) };
+            goalPos  = { x: COLS - 2, y: 2 + Math.floor(Math.random() * (ROWS - 4)) };
+
             const protectedCells = new Set();
             for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
@@ -928,7 +578,7 @@
                 }
             }
 
-            // Create 4 to 6 random Stone Fortress Wall Clusters
+            // 1. Randomize Fortress Obstacle Walls (Scattered barriers)
             const wallClusters = 5 + Math.floor(Math.random() * 3);
             for (let c = 0; c < wallClusters; c++) {
                 const cx = 5 + Math.floor(Math.random() * (COLS - 10));
@@ -947,7 +597,7 @@
                 }
             }
 
-            // Create 3 to 5 Rocky Mountain Facet Blobs
+            // 2. Randomize Rocky Mountain Formations
             const rockBlobs = 4 + Math.floor(Math.random() * 3);
             for (let b = 0; b < rockBlobs; b++) {
                 const bx = 3 + Math.floor(Math.random() * (COLS - 6));
@@ -967,7 +617,7 @@
                 }
             }
 
-            // Create 3 to 5 Sandy Dune Ripples
+            // 3. Randomize Sandy Desert Dunes
             const sandBlobs = 4 + Math.floor(Math.random() * 3);
             for (let s = 0; s < sandBlobs; s++) {
                 const sx = 3 + Math.floor(Math.random() * (COLS - 6));
@@ -987,7 +637,7 @@
                 }
             }
 
-            // Carve at least one open winding corridor from start to goal to guarantee navigability
+            // 4. Guarantee open navigation route from start to goal
             let wx = startPos.x;
             let wy = startPos.y;
             while (wx < goalPos.x) {
@@ -1003,58 +653,7 @@
             runAStarInstant();
         }
 
-        // Map Presets
-        function applyPreset(preset) {
-            initGrid();
-            startPos = { x: 1, y: 9 };
-            goalPos  = { x: 30, y: 9 };
-
-            if (preset === 'mountain') {
-                for (let y = 3; y < 15; y++) {
-                    if (y !== 6 && y !== 12) grid[y][10] = TILE_WALL;
-                }
-                for (let y = 1; y < 17; y++) {
-                    if (y !== 4 && y !== 14) grid[y][21] = TILE_WALL;
-                }
-                for (let y = 5; y < 14; y++) {
-                    for (let x = 3; x < 9; x++) grid[y][x] = TILE_SAND;
-                }
-                for (let y = 1; y < 7; y++) {
-                    for (let x = 11; x < 20; x++) grid[y][x] = TILE_ROCK;
-                }
-                for (let y = 11; y < 17; y++) {
-                    for (let x = 11; x < 20; x++) grid[y][x] = TILE_ROCK;
-                }
-                log("Preset: Mountain Pass & Dunes loaded.");
-            } else if (preset === 'choke') {
-                for (let y = 0; y < 18; y++) {
-                    if (y !== 2 && y !== 9 && y !== 16) grid[y][15] = TILE_WALL;
-                }
-                grid[8][14] = TILE_WALL; grid[10][14] = TILE_WALL;
-                grid[8][16] = TILE_WALL; grid[10][16] = TILE_WALL;
-                for (let x = 10; x < 20; x++) grid[2][x] = TILE_SAND;
-                log("Preset: Hazard Chokepoints loaded.");
-            } else if (preset === 'dune_valley') {
-                for (let y = 0; y < 8; y++) {
-                    for (let x = 5; x < 27; x++) grid[y][x] = TILE_ROCK;
-                }
-                for (let y = 10; y < 18; y++) {
-                    for (let x = 5; x < 27; x++) grid[y][x] = TILE_SAND;
-                }
-                for (let x = 8; x < 24; x++) {
-                    if (x !== 16) { grid[8][x] = TILE_WALL; grid[9][x] = TILE_WALL; }
-                }
-                log("Preset: Dune vs Ridge Valley loaded.");
-            } else if (preset === 'clear') {
-                grid[7][15] = TILE_WALL; grid[8][15] = TILE_WALL; grid[9][15] = TILE_WALL; grid[10][15] = TILE_WALL;
-                log("Preset: Open Plains loaded.");
-            }
-
-            updateCellVisuals();
-            runAStarInstant();
-        }
-
-        // Cost Formula
+        // Traversal Cost Formula
         function getTileTraversalCost(x, y) {
             if (grid[y][x] === TILE_WALL) return Infinity;
             let cost = 1.0;
@@ -1068,14 +667,14 @@
             return Math.hypot(x1 - x2, y1 - y2);
         }
 
-        // Core A* Search
-        function runAStar() {
+        // A* Path Calculation
+        function runAStarInstant() {
             nodeDetails.clear();
             closedSet.clear();
             pathNodes = [];
 
             document.querySelectorAll('.map-cell').forEach(c => {
-                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
+                c.classList.remove('cell-path');
             });
 
             const startKey = `${startPos.x},${startPos.y}`;
@@ -1148,10 +747,6 @@
                     }
                 }
             }
-
-            log("A* Search: Goal is unreachable! Obstacles completely block the destination.");
-            DOM.statsLabel.textContent = `Nodes Explored: ${closedSet.size} | PATH BLOCKED`;
-            audio.error();
             return false;
         }
 
@@ -1170,188 +765,9 @@
                     cell.classList.add('cell-path');
                 }
             });
-
-            const totalCost = goalNode.g.toFixed(2);
-            DOM.statsLabel.textContent = `Nodes: ${closedSet.size} | Steps: ${pathNodes.length} | Cost: ${totalCost}`;
-            log(`Optimal Path Calculated! Length: ${pathNodes.length} steps | Total Cost G = ${totalCost}`);
         }
 
-        function runAStarInstant() {
-            if (isWalking) return;
-            const found = runAStar();
-            if (found) audio.blip();
-        }
-
-        // Animated Search
-        async function runAStarAnimated() {
-            if (isWalking) return;
-            nodeDetails.clear();
-            closedSet.clear();
-            pathNodes = [];
-
-            document.querySelectorAll('.map-cell').forEach(c => {
-                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
-            });
-
-            log("Starting Animated Step-by-Step Search...");
-            const startKey = `${startPos.x},${startPos.y}`;
-            const startNode = {
-                x: startPos.x, y: startPos.y,
-                g: 0, h: heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y),
-                f: 0, parent: null
-            };
-            startNode.f = startNode.g + startNode.h;
-            openSet = [startNode];
-            nodeDetails.set(startKey, startNode);
-
-            DOM.btnPlay.disabled = true;
-
-            while (openSet.length > 0) {
-                let lowestIdx = 0;
-                for (let i = 1; i < openSet.length; i++) {
-                    if (openSet[i].f < openSet[lowestIdx].f) lowestIdx = i;
-                }
-
-                const current = openSet.splice(lowestIdx, 1)[0];
-                const currentKey = `${current.x},${current.y}`;
-                closedSet.add(currentKey);
-
-                const curCell = document.getElementById(`cell-${current.x}-${current.y}`);
-                if (curCell && (current.x !== startPos.x || current.y !== startPos.y) && (current.x !== goalPos.x || current.y !== goalPos.y)) {
-                    curCell.classList.remove('cell-open');
-                    curCell.classList.add('cell-closed');
-                }
-
-                if (current.x === goalPos.x && current.y === goalPos.y) {
-                    reconstructPath(current);
-                    audio.chime();
-                    DOM.btnPlay.disabled = false;
-                    return;
-                }
-
-                const neighbors = [
-                    { dx: 0, dy: -1, diag: false },
-                    { dx: 1, dy: 0,  diag: false },
-                    { dx: 0, dy: 1,  diag: false },
-                    { dx: -1, dy: 0, diag: false },
-                    { dx: 1, dy: -1, diag: true },
-                    { dx: 1, dy: 1,  diag: true },
-                    { dx: -1, dy: 1, diag: true },
-                    { dx: -1, dy: -1, diag: true }
-                ];
-
-                for (const nb of neighbors) {
-                    const nx = current.x + nb.dx;
-                    const ny = current.y + nb.dy;
-
-                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
-                    if (grid[ny][nx] === TILE_WALL) continue;
-                    if (nb.diag && (grid[current.y][nx] === TILE_WALL || grid[ny][current.x] === TILE_WALL)) continue;
-
-                    const neighborKey = `${nx},${ny}`;
-                    if (closedSet.has(neighborKey)) continue;
-
-                    const stepDist = nb.diag ? Math.SQRT2 : 1.0;
-                    const tileCost = getTileTraversalCost(nx, ny);
-                    const tentativeG = current.g + (stepDist * tileCost);
-
-                    let neighborNode = nodeDetails.get(neighborKey);
-
-                    if (!neighborNode) {
-                        neighborNode = {
-                            x: nx, y: ny, g: tentativeG,
-                            h: heuristic(nx, ny, goalPos.x, goalPos.y),
-                            f: 0, parent: current
-                        };
-                        neighborNode.f = neighborNode.g + neighborNode.h;
-                        nodeDetails.set(neighborKey, neighborNode);
-                        openSet.push(neighborNode);
-
-                        const nbCell = document.getElementById(`cell-${nx}-${ny}`);
-                        if (nbCell && (nx !== startPos.x || ny !== startPos.y) && (nx !== goalPos.x || ny !== goalPos.y)) {
-                            nbCell.classList.add('cell-open');
-                        }
-                    } else if (tentativeG < neighborNode.g) {
-                        neighborNode.g = tentativeG;
-                        neighborNode.f = neighborNode.g + neighborNode.h;
-                        neighborNode.parent = current;
-                    }
-                }
-
-                audio.blip();
-                await sleep(14);
-            }
-
-            DOM.btnPlay.disabled = false;
-        }
-
-        // Hero Walking Animation along Path
-        async function walkCharacterAlongPath() {
-            if (pathNodes.length === 0) runAStar();
-            if (pathNodes.length === 0 || isWalking) return;
-
-            isWalking = true;
-            DOM.btnWalk.disabled = true;
-            log("Hero starting walk along A* optimal path...");
-
-            for (let i = 0; i < pathNodes.length; i++) {
-                const node = pathNodes[i];
-                positionCharacterSprite(node.x, node.y);
-                audio.step();
-                await sleep(110);
-            }
-
-            audio.chime();
-            log("Hero reached the Goal! ★");
-            isWalking = false;
-            DOM.btnWalk.disabled = false;
-        }
-
-        // Cell Hover Inspector
-        function inspectCell(x, y) {
-            DOM.inspCoord.textContent = `(${x}, ${y})`;
-            const type = grid[y][x];
-            let typeName = "Normal Plains";
-            if (type === TILE_WALL) typeName = "Fortress Wall (Impassable)";
-            else if (type === TILE_ROCK) typeName = "Chiseled Rocky Crags";
-            else if (type === TILE_SAND) typeName = "Desert Sand Dunes";
-
-            DOM.inspType.textContent = typeName;
-            DOM.inspBase.textContent = type === TILE_WALL ? "Infinity (Blocked)" : "1.00";
-            DOM.inspRock.textContent = type === TILE_ROCK ? `+${weightRock.toFixed(1)}` : "+0.0";
-            DOM.inspSand.textContent = type === TILE_SAND ? `+${weightSand.toFixed(1)}` : "+0.0";
-
-            const hazard = (hazardMap[y][x] * weightNear).toFixed(2);
-            DOM.inspHazard.textContent = `+${hazard} (Dist: ${hazardMap[y][x].toFixed(2)})`;
-
-            const total = type === TILE_WALL ? "Infinity" : getTileTraversalCost(x, y).toFixed(2);
-            DOM.inspTotal.textContent = total;
-
-            const key = `${x},${y}`;
-            const node = nodeDetails.get(key);
-            if (node) {
-                DOM.inspG.textContent = node.g.toFixed(2);
-                DOM.inspH.textContent = node.h.toFixed(2);
-                DOM.inspF.textContent = node.f.toFixed(2);
-            } else {
-                DOM.inspG.textContent = "Unvisited";
-                DOM.inspH.textContent = heuristic(x, y, goalPos.x, goalPos.y).toFixed(2);
-                DOM.inspF.textContent = "--";
-            }
-        }
-
-        // Fullscreen Toggle
-        function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    log(`Fullscreen error: ${err.message}`);
-                });
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        // Slider Listeners
+        // Sliders Listeners
         DOM.sliderRock.addEventListener('input', (e) => {
             weightRock = parseFloat(e.target.value);
             DOM.valRock.textContent = `${weightRock.toFixed(1)}×`;
@@ -1371,67 +787,18 @@
             runAStarInstant();
         });
 
-        DOM.btnResetWeights.addEventListener('click', () => {
-            weightRock = 4.0; weightSand = 2.5; weightNear = 5.0;
-            DOM.sliderRock.value = 4.0; DOM.sliderSand.value = 2.5; DOM.sliderNear.value = 5.0;
-            DOM.valRock.textContent = '4.0×'; DOM.valSand.textContent = '2.5×'; DOM.valNear.textContent = '5.0×';
-            updateCellVisuals();
-            runAStarInstant();
-        });
-
-        // Brush Selection
-        Object.keys(DOM.brushBtns).forEach(k => {
-            DOM.brushBtns[k].addEventListener('click', () => {
-                Object.values(DOM.brushBtns).forEach(b => b.classList.remove('active'));
-                DOM.brushBtns[k].classList.add('active');
-                currentBrush = k;
-                audio.blip();
-            });
-        });
-
-        // Presets
-        DOM.presetBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                DOM.presetBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                applyPreset(btn.dataset.preset);
-                audio.blip();
-            });
-        });
-
-        // Randomize
         DOM.btnRandomize.addEventListener('click', () => {
-            randomizeMap();
+            randomizeStructures();
         });
 
-        // Controls
-        DOM.btnPlay.addEventListener('click', () => { audio.init(); runAStarAnimated(); });
-        DOM.btnWalk.addEventListener('click', () => { audio.init(); walkCharacterAlongPath(); });
-        DOM.btnStep.addEventListener('click', () => { runAStarInstant(); });
-        DOM.btnClear.addEventListener('click', () => {
-            document.querySelectorAll('.map-cell').forEach(c => {
-                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
-            });
-            DOM.statsLabel.textContent = "Path cleared.";
-        });
-        DOM.btnFullscreen.addEventListener('click', toggleFullscreen);
-        DOM.btnSound.addEventListener('click', () => {
-            audio.muted = !audio.muted;
-            DOM.btnSound.textContent = audio.muted ? '🔇 MUTED' : '🔊 SOUND';
-        });
-        DOM.btnCrt.addEventListener('click', () => { document.body.classList.toggle('no-crt'); });
-
-        // Hotkeys: Space (Run), R (Randomize), F (Fullscreen)
+        // Hotkey: R to randomize
         window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') { e.preventDefault(); DOM.btnPlay.click(); }
-            else if (e.code === 'KeyR') { e.preventDefault(); DOM.btnRandomize.click(); }
-            else if (e.code === 'KeyF') { e.preventDefault(); toggleFullscreen(); }
+            if (e.code === 'KeyR') { e.preventDefault(); randomizeStructures(); }
         });
 
-        // Boot
-        initGrid();
+        // Boot with procedural randomized structures!
         buildGridDOM();
-        applyPreset('mountain');
+        randomizeStructures();
     </script>
 </body>
 </html>
