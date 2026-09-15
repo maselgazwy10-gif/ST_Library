@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A* Pathfinding Academy — Map & Sliders</title>
+    <title>A* Pathfinding Academy — Clustered Terrain Simulator</title>
     
     <!-- Retro Fonts & Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -40,14 +40,14 @@
             display: flex;
             flex-direction: column;
             background-image: 
-                radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.07) 0%, transparent 50%),
-                radial-gradient(circle at 85% 25%, rgba(251, 191, 36, 0.07) 0%, transparent 50%),
-                radial-gradient(circle at 50% 85%, rgba(52, 211, 153, 0.05) 0%, transparent 55%);
+                radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 85% 25%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 50% 85%, rgba(52, 211, 153, 0.06) 0%, transparent 55%);
         }
 
-        /* Sliders Overlay Dock */
+        /* Top Sliders Bar */
         .sliders-bar {
-            background: rgba(19, 29, 46, 0.92);
+            background: rgba(19, 29, 46, 0.94);
             backdrop-filter: blur(8px);
             border-bottom: 2px solid #334155;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
@@ -104,7 +104,7 @@
         }
 
         /* ==========================================================================
-           FULLSCREEN GRID & RICH PIXEL TEXTURES
+           FULLSCREEN GRID & CONTIGUOUS CLUSTER TEXTURES
            ========================================================================== */
         
         #map-stage {
@@ -160,7 +160,7 @@
             background-position: 0 0, 4px 4px;
         }
 
-        /* 2. Rich Rocky Mountain Crags (Chiseled facets, shadows & peaks) */
+        /* 2. Rich Rocky Mountain Crag Cluster */
         .tile-rock {
             background-color: #44403c;
             border: 1px solid #78716c;
@@ -181,7 +181,7 @@
             opacity: 0.9;
         }
 
-        /* 3. Rich Sandy Desert Dunes (Wavy ripple lines & gold specks) */
+        /* 3. Rich Sandy Desert Dune Cluster */
         .tile-sand {
             background-color: #9a6813;
             border: 1px solid #d97706;
@@ -202,7 +202,7 @@
             font-weight: bold;
         }
 
-        /* 4. Rich Impassable Fortress Obstacle Wall */
+        /* 4. Fortress Obstacle Wall Barrier Cluster */
         .tile-wall {
             background-color: #0b101b;
             border: 1.5px solid #1e293b;
@@ -220,7 +220,7 @@
             text-shadow: 0 0 3px #000;
         }
 
-        /* Near-Obstacle Hazard Warning Glow */
+        /* Near-Obstacle Hazard Glow */
         .hazard-1 {
             box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.7), inset 0 0 6px rgba(248, 113, 113, 0.45) !important;
         }
@@ -255,7 +255,7 @@
             z-index: 25;
         }
 
-        /* Animated Character Sprite at Start */
+        /* Animated Character Sprite */
         .char-sprite {
             position: absolute;
             width: 28px;
@@ -320,7 +320,6 @@
             100% { transform: rotate(360deg) scale(1); }
         }
 
-        /* Pixel Soul Heart */
         .pixel-heart {
             display: inline-block;
             width: 13px; height: 13px;
@@ -334,13 +333,13 @@
 </head>
 <body>
 
-    <!-- TOP DOCK: ONLY THE 3 COST WEIGHT SLIDERS & RANDOMIZE BUTTON -->
+    <!-- TOP DOCK: ONLY THE 3 COST SLIDERS & CLUSTER RANDOMIZER -->
     <div class="sliders-bar px-6 py-2.5 flex items-center justify-between gap-6 shrink-0">
         
-        <!-- Brand Indicator -->
+        <!-- Indicator -->
         <div class="flex items-center gap-2 shrink-0">
             <span class="pixel-heart"></span>
-            <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* PATHFINDER</span>
+            <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* CLUSTER SIMULATOR</span>
         </div>
 
         <!-- 3 Cursors (Sliders) -->
@@ -350,7 +349,7 @@
             <div class="flex-1 flex flex-col gap-0.5">
                 <div class="flex justify-between items-center text-xs font-mono">
                     <span class="flex items-center gap-1 font-bold text-stone-300">
-                        <span>▲</span> ROCK WEIGHT (W_rock)
+                        <span>▲</span> ROCK MASS WEIGHT (W_rock)
                     </span>
                     <span class="text-yellow-300 font-bold text-sm" id="val-rock">4.0×</span>
                 </div>
@@ -361,7 +360,7 @@
             <div class="flex-1 flex flex-col gap-0.5">
                 <div class="flex justify-between items-center text-xs font-mono">
                     <span class="flex items-center gap-1 font-bold text-yellow-300">
-                        <span>░</span> SAND WEIGHT (W_sand)
+                        <span>░</span> SAND DUNE WEIGHT (W_sand)
                     </span>
                     <span class="text-yellow-300 font-bold text-sm" id="val-sand">2.5×</span>
                 </div>
@@ -381,19 +380,19 @@
 
         </div>
 
-        <!-- Re-Randomize Button -->
+        <!-- Randomize Clusters Button -->
         <div class="flex items-center gap-2 shrink-0">
-            <button class="ut-btn bg-purple-950/80 border-purple-500 text-purple-300 hover:bg-purple-500 hover:text-black font-bold" id="btn-randomize" title="Randomize structure locations (Hotkey: R)">
-                <span>🎲</span> RANDOMIZE MAP
+            <button class="ut-btn bg-purple-950/80 border-purple-500 text-purple-300 hover:bg-purple-500 hover:text-black font-bold" id="btn-randomize" title="Randomize contiguous clusters (Hotkey: R)">
+                <span>🎲</span> RANDOMIZE CLUSTERS
             </button>
         </div>
     </div>
 
-    <!-- MAIN MAP CANVAS (FILLS ENTIRE SCREEN) -->
+    <!-- MAIN MAP CANVAS (FILLS ENTIRE VIEWPORT) -->
     <main id="map-stage">
         <div id="grid-container"></div>
 
-        <!-- Animated Character Sprite at the foot of Start Point -->
+        <!-- Animated Character Sprite at Start -->
         <div class="char-sprite" id="character-sprite" style="display: none;">
             <div class="char-hat"></div>
             <div class="char-body">
@@ -409,7 +408,6 @@
         </div>
     </main>
 
-    <!-- A* Pathfinding Logic -->
     <script>
         const COLS = 32;
         const ROWS = 18;
@@ -446,7 +444,6 @@
             btnRandomize: document.getElementById('btn-randomize')
         };
 
-        // Initialize 2D Grid
         function initGrid() {
             grid = [];
             hazardMap = [];
@@ -460,7 +457,7 @@
             }
         }
 
-        // Proximity Hazard Field (Near-Obstacle Areas)
+        // Proximity Hazard Field
         function computeHazardMap() {
             for (let y = 0; y < ROWS; y++) {
                 for (let x = 0; x < COLS; x++) {
@@ -489,7 +486,6 @@
             }
         }
 
-        // Build DOM Table
         function buildGridDOM() {
             DOM.gridContainer.innerHTML = '';
             DOM.gridContainer.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
@@ -501,7 +497,6 @@
                     cell.className = 'map-cell tile-normal';
                     cell.id = `cell-${x}-${y}`;
 
-                    // Clicking any tile relocates start point and tests path immediately
                     cell.addEventListener('click', () => {
                         if (grid[y][x] === TILE_WALL) return;
                         startPos = { x, y };
@@ -515,7 +510,6 @@
             window.addEventListener('resize', () => { positionCharacterSprite(startPos.x, startPos.y); });
         }
 
-        // Render Visual Styles
         function updateCellVisuals() {
             computeHazardMap();
             for (let y = 0; y < ROWS; y++) {
@@ -561,9 +555,10 @@
         }
 
         // =========================================================================
-        // PROCEDURAL RANDOMIZATION OF STRUCTURE LOCATIONS
+        // CONTIGUOUS BIOME CLUSTERING ALGORITHM
+        // Generates organic, cohesive masses rather than scattered noise!
         // =========================================================================
-        function randomizeStructures() {
+        function generateContiguousClusters() {
             initGrid();
 
             // Randomize start position on far left (column 1, random row 2..15)
@@ -578,60 +573,74 @@
                 }
             }
 
-            // 1. Randomize Fortress Obstacle Walls (Scattered barriers)
-            const wallClusters = 5 + Math.floor(Math.random() * 3);
-            for (let c = 0; c < wallClusters; c++) {
-                const cx = 5 + Math.floor(Math.random() * (COLS - 10));
-                const cy = 2 + Math.floor(Math.random() * (ROWS - 4));
-                const length = 3 + Math.floor(Math.random() * 5);
-                const isVertical = Math.random() > 0.45;
+            // Helper: Grow a cohesive, contiguous blob from a seed point
+            function growContiguousBlob(seedX, seedY, targetTile, targetSize) {
+                const blob = new Set();
+                const queue = [{ x: seedX, y: seedY }];
+                blob.add(`${seedX},${seedY}`);
 
-                for (let step = 0; step < length; step++) {
-                    const wx = isVertical ? cx : cx + step;
-                    const wy = isVertical ? cy + step : cy;
-                    if (wx >= 3 && wx < COLS - 3 && wy >= 0 && wy < ROWS) {
-                        if (!protectedCells.has(`${wx},${wy}`)) {
-                            grid[wy][wx] = TILE_WALL;
-                        }
-                    }
-                }
-            }
+                while (queue.length > 0 && blob.size < targetSize) {
+                    // Pick from queue with bias to expand organically
+                    const idx = Math.floor(Math.random() * queue.length);
+                    const cur = queue.splice(idx, 1)[0];
 
-            // 2. Randomize Rocky Mountain Formations
-            const rockBlobs = 4 + Math.floor(Math.random() * 3);
-            for (let b = 0; b < rockBlobs; b++) {
-                const bx = 3 + Math.floor(Math.random() * (COLS - 6));
-                const by = 1 + Math.floor(Math.random() * (ROWS - 2));
-                const radius = 2 + Math.floor(Math.random() * 3);
+                    const dirs = [
+                        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+                        { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+                    ];
+                    // Shuffle directions
+                    dirs.sort(() => Math.random() - 0.5);
 
-                for (let dy = -radius; dy <= radius; dy++) {
-                    for (let dx = -radius; dx <= radius; dx++) {
-                        const rx = bx + dx;
-                        const ry = by + dy;
-                        if (rx >= 0 && rx < COLS && ry >= 0 && ry < ROWS) {
-                            if (Math.hypot(dx, dy) <= radius && grid[ry][rx] === TILE_NORMAL && !protectedCells.has(`${rx},${ry}`)) {
-                                if (Math.random() > 0.15) grid[ry][rx] = TILE_ROCK;
+                    for (const d of dirs) {
+                        const nx = cur.x + d.dx;
+                        const ny = cur.y + d.dy;
+                        const key = `${nx},${ny}`;
+
+                        if (nx >= 3 && nx < COLS - 3 && ny >= 1 && ny < ROWS - 1) {
+                            if (!protectedCells.has(key) && !blob.has(key) && grid[ny][nx] === TILE_NORMAL) {
+                                blob.add(key);
+                                grid[ny][nx] = targetTile;
+                                queue.push({ x: nx, y: ny });
+                                if (blob.size >= targetSize) break;
                             }
                         }
                     }
                 }
             }
 
-            // 3. Randomize Sandy Desert Dunes
-            const sandBlobs = 4 + Math.floor(Math.random() * 3);
-            for (let s = 0; s < sandBlobs; s++) {
-                const sx = 3 + Math.floor(Math.random() * (COLS - 6));
-                const sy = 1 + Math.floor(Math.random() * (ROWS - 2));
-                const radius = 2 + Math.floor(Math.random() * 3);
+            // 1. Generate 2 to 3 Cohesive ROCK MOUNTAIN MASSIF Clusters
+            const rockCount = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < rockCount; i++) {
+                const rx = 6 + Math.floor(Math.random() * (COLS - 14));
+                const ry = 2 + Math.floor(Math.random() * (ROWS - 5));
+                const massSize = 14 + Math.floor(Math.random() * 12); // Contiguous cluster of 14-25 rock tiles
+                growContiguousBlob(rx, ry, TILE_ROCK, massSize);
+            }
 
-                for (let dy = -radius; dy <= radius; dy++) {
-                    for (let dx = -radius; dx <= radius; dx++) {
-                        const px = sx + dx;
-                        const py = sy + dy;
-                        if (px >= 0 && px < COLS && py >= 0 && py < ROWS) {
-                            if (Math.hypot(dx, dy) <= radius && grid[py][px] === TILE_NORMAL && !protectedCells.has(`${px},${py}`)) {
-                                if (Math.random() > 0.15) grid[py][px] = TILE_SAND;
-                            }
+            // 2. Generate 2 to 3 Cohesive SANDY DESERT DUNE Clusters
+            const sandCount = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < sandCount; i++) {
+                const sx = 5 + Math.floor(Math.random() * (COLS - 12));
+                const sy = 2 + Math.floor(Math.random() * (ROWS - 5));
+                const duneSize = 18 + Math.floor(Math.random() * 14); // Contiguous cluster of 18-32 sand tiles
+                growContiguousBlob(sx, sy, TILE_SAND, duneSize);
+            }
+
+            // 3. Generate 3 to 4 Distinct FORTRESS WALL BARRIER Clusters
+            // (Continuous linear or L-shaped stone walls that act as chokepoints)
+            const wallCount = 3 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < wallCount; i++) {
+                const wx = 7 + Math.floor(Math.random() * (COLS - 15));
+                const wy = 2 + Math.floor(Math.random() * (ROWS - 6));
+                const len = 4 + Math.floor(Math.random() * 4);
+                const isVertical = Math.random() > 0.4;
+
+                for (let s = 0; s < len; s++) {
+                    const cx = isVertical ? wx : wx + s;
+                    const cy = isVertical ? wy + s : wy;
+                    if (cx >= 3 && cx < COLS - 3 && cy >= 1 && cy < ROWS - 1) {
+                        if (!protectedCells.has(`${cx},${cy}`)) {
+                            grid[cy][cx] = TILE_WALL;
                         }
                     }
                 }
@@ -642,7 +651,7 @@
             let wy = startPos.y;
             while (wx < goalPos.x) {
                 if (grid[wy][wx] === TILE_WALL) grid[wy][wx] = TILE_NORMAL;
-                if (Math.random() > 0.4) wx++;
+                if (Math.random() > 0.45) wx++;
                 else {
                     const stepY = (wy < goalPos.y) ? 1 : (wy > goalPos.y ? -1 : (Math.random() > 0.5 ? 1 : -1));
                     if (wy + stepY >= 0 && wy + stepY < ROWS) wy += stepY;
@@ -667,7 +676,6 @@
             return Math.hypot(x1 - x2, y1 - y2);
         }
 
-        // A* Path Calculation
         function runAStarInstant() {
             nodeDetails.clear();
             closedSet.clear();
@@ -788,17 +796,16 @@
         });
 
         DOM.btnRandomize.addEventListener('click', () => {
-            randomizeStructures();
+            generateContiguousClusters();
         });
 
-        // Hotkey: R to randomize
         window.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyR') { e.preventDefault(); randomizeStructures(); }
+            if (e.code === 'KeyR') { e.preventDefault(); generateContiguousClusters(); }
         });
 
-        // Boot with procedural randomized structures!
+        // Boot
         buildGridDOM();
-        randomizeStructures();
+        generateContiguousClusters();
     </script>
 </body>
 </html>
