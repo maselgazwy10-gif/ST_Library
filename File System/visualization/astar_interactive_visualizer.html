@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A* Pathfinding Academy — Clustered Terrain Simulator</title>
+    <title>A* Pathfinding Academy — Obstacle Inflation Simulator</title>
     
     <!-- Retro Fonts & Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -77,7 +77,7 @@
         }
         .slider-rock::-webkit-slider-thumb { background: #94a3b8; box-shadow: 0 0 8px #94a3b8; }
         .slider-sand::-webkit-slider-thumb { background: #facc15; box-shadow: 0 0 8px #facc15; }
-        .slider-near::-webkit-slider-thumb { background: #f87171; box-shadow: 0 0 8px #f87171; }
+        .slider-near::-webkit-slider-thumb { background: #f87171; box-shadow: 0 0 10px #f87171; }
         .cost-slider:hover::-webkit-slider-thumb { transform: scale(1.25); }
 
         .ut-btn {
@@ -140,7 +140,7 @@
             border-radius: 2px;
             font-family: var(--font-code);
             cursor: pointer;
-            transition: transform 0.08s;
+            transition: transform 0.08s, box-shadow 0.15s, background-color 0.15s;
             overflow: hidden;
         }
         .map-cell:hover {
@@ -160,7 +160,7 @@
             background-position: 0 0, 4px 4px;
         }
 
-        /* 2. Rich Rocky Mountain Crag Cluster */
+        /* 2. Rich Rocky Mountain Crags */
         .tile-rock {
             background-color: #44403c;
             border: 1px solid #78716c;
@@ -181,7 +181,7 @@
             opacity: 0.9;
         }
 
-        /* 3. Rich Sandy Desert Dune Cluster */
+        /* 3. Rich Sandy Desert Dunes */
         .tile-sand {
             background-color: #9a6813;
             border: 1px solid #d97706;
@@ -202,7 +202,7 @@
             font-weight: bold;
         }
 
-        /* 4. Fortress Obstacle Wall Barrier Cluster */
+        /* 4. Impassable Fortress Obstacle Wall */
         .tile-wall {
             background-color: #0b101b;
             border: 1.5px solid #1e293b;
@@ -220,12 +220,32 @@
             text-shadow: 0 0 3px #000;
         }
 
-        /* Near-Obstacle Hazard Glow */
+        /* ==========================================================================
+           DYNAMIC OBSTACLE INFLATION TIERS (EXPANDING CONCENTRIC SAFETY LAYERS)
+           ========================================================================== */
+        
+        /* Tier 1: Immediate obstacle contact boundary (Dist <= 1.0) */
         .hazard-1 {
-            box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.7), inset 0 0 6px rgba(248, 113, 113, 0.45) !important;
+            box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.85), inset 0 0 10px rgba(239, 68, 68, 0.5) !important;
+            background-color: rgba(185, 28, 28, 0.28) !important;
         }
+
+        /* Tier 2: Secondary inflation layer (Dist <= 1.8) */
         .hazard-2 {
-            box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.45) !important;
+            box-shadow: inset 0 0 0 1.5px rgba(249, 115, 22, 0.7), inset 0 0 8px rgba(249, 115, 22, 0.35) !important;
+            background-color: rgba(194, 65, 12, 0.2) !important;
+        }
+
+        /* Tier 3: Tertiary inflation expansion (Dist <= 2.6) */
+        .hazard-3 {
+            box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.55), inset 0 0 6px rgba(251, 191, 36, 0.25) !important;
+            background-color: rgba(180, 83, 9, 0.14) !important;
+        }
+
+        /* Tier 4: Quaternary outer clearance buffer (Dist <= 3.5) */
+        .hazard-4 {
+            box-shadow: inset 0 0 0 1px rgba(254, 240, 138, 0.35) !important;
+            background-color: rgba(254, 240, 138, 0.08) !important;
         }
 
         /* A* Path Marking */
@@ -339,7 +359,7 @@
         <!-- Indicator -->
         <div class="flex items-center gap-2 shrink-0">
             <span class="pixel-heart"></span>
-            <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* CLUSTER SIMULATOR</span>
+            <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* INFLATION SIMULATOR</span>
         </div>
 
         <!-- 3 Cursors (Sliders) -->
@@ -367,13 +387,13 @@
                 <input type="range" min="0" max="15" step="0.5" value="2.5" class="cost-slider slider-sand" id="slider-sand">
             </div>
 
-            <!-- Slider 3: Near-Obstacle Clearance Penalty -->
+            <!-- Slider 3: Near-Obstacle Hazard & Dynamic Inflation -->
             <div class="flex-1 flex flex-col gap-0.5">
                 <div class="flex justify-between items-center text-xs font-mono">
                     <span class="flex items-center gap-1 font-bold text-red-400">
-                        <span>⚠️</span> NEAR-OBSTACLE HAZARD (W_near)
+                        <span>⚠️</span> OBSTACLE INFLATION (W_near)
                     </span>
-                    <span class="text-yellow-300 font-bold text-sm" id="val-near">5.0×</span>
+                    <span class="text-yellow-300 font-bold text-sm" id="val-near">5.0× (Radius: 2)</span>
                 </div>
                 <input type="range" min="0" max="20" step="0.5" value="5.0" class="cost-slider slider-near" id="slider-near">
             </div>
@@ -388,7 +408,7 @@
         </div>
     </div>
 
-    <!-- MAIN MAP CANVAS (FILLS ENTIRE VIEWPORT) -->
+    <!-- MAIN MAP CANVAS (FILLS ENTIRE SCREEN) -->
     <main id="map-stage">
         <div id="grid-container"></div>
 
@@ -457,17 +477,37 @@
             }
         }
 
-        // Proximity Hazard Field
+        // =========================================================================
+        // DYNAMIC OBSTACLE INFLATION (Expands clearance buffer as W_near increases)
+        // =========================================================================
+        function getInflationRadius() {
+            // As W_near increases from 0 to 20, inflation radius expands up to 4 tiles
+            if (weightNear <= 2.0) return 0;
+            if (weightNear <= 6.0) return 1.5;   // Radius ~1-2 tiles
+            if (weightNear <= 11.0) return 2.4;  // Radius ~2-3 tiles
+            if (weightNear <= 16.0) return 3.2;  // Radius ~3-4 tiles
+            return 4.2;                          // Extreme inflation (4+ tiles)
+        }
+
         function computeHazardMap() {
+            const maxRadius = getInflationRadius();
+
             for (let y = 0; y < ROWS; y++) {
                 for (let x = 0; x < COLS; x++) {
                     if (grid[y][x] === TILE_WALL) {
                         hazardMap[y][x] = 0;
                         continue;
                     }
+
+                    if (maxRadius <= 0) {
+                        hazardMap[y][x] = 0;
+                        continue;
+                    }
+
                     let minD = 999;
-                    for (let dy = -2; dy <= 2; dy++) {
-                        for (let dx = -2; dx <= 2; dx++) {
+                    const searchBox = Math.ceil(maxRadius);
+                    for (let dy = -searchBox; dy <= searchBox; dy++) {
+                        for (let dx = -searchBox; dx <= searchBox; dx++) {
                             const ny = y + dy;
                             const nx = x + dx;
                             if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
@@ -478,10 +518,14 @@
                             }
                         }
                     }
-                    if (minD <= 1.0) hazardMap[y][x] = 1.0;
-                    else if (minD <= 1.5) hazardMap[y][x] = 0.5;
-                    else if (minD <= 2.1) hazardMap[y][x] = 0.25;
-                    else hazardMap[y][x] = 0.0;
+
+                    if (minD <= maxRadius) {
+                        // Decay from 1.0 (touching wall) to 0.0 at outer inflation perimeter
+                        const decay = (maxRadius - minD + 0.4) / maxRadius;
+                        hazardMap[y][x] = Math.max(0.0, Math.min(1.0, decay));
+                    } else {
+                        hazardMap[y][x] = 0.0;
+                    }
                 }
             }
         }
@@ -512,6 +556,8 @@
 
         function updateCellVisuals() {
             computeHazardMap();
+            const radius = getInflationRadius();
+
             for (let y = 0; y < ROWS; y++) {
                 for (let x = 0; x < COLS; x++) {
                     const cell = document.getElementById(`cell-${x}-${y}`);
@@ -524,9 +570,13 @@
                     else if (grid[y][x] === TILE_SAND) cell.classList.add('tile-sand');
                     else cell.classList.add('tile-normal');
 
-                    if (grid[y][x] !== TILE_WALL) {
-                        if (hazardMap[y][x] >= 0.8) cell.classList.add('hazard-1');
-                        else if (hazardMap[y][x] > 0) cell.classList.add('hazard-2');
+                    // Concentric Swelling Inflation Auras
+                    if (grid[y][x] !== TILE_WALL && hazardMap[y][x] > 0) {
+                        const h = hazardMap[y][x];
+                        if (h >= 0.75) cell.classList.add('hazard-1');
+                        else if (h >= 0.5) cell.classList.add('hazard-2');
+                        else if (h >= 0.25) cell.classList.add('hazard-3');
+                        else cell.classList.add('hazard-4');
                     }
 
                     if (x === startPos.x && y === startPos.y) {
@@ -556,12 +606,10 @@
 
         // =========================================================================
         // CONTIGUOUS BIOME CLUSTERING ALGORITHM
-        // Generates organic, cohesive masses rather than scattered noise!
         // =========================================================================
         function generateContiguousClusters() {
             initGrid();
 
-            // Randomize start position on far left (column 1, random row 2..15)
             startPos = { x: 1, y: 2 + Math.floor(Math.random() * (ROWS - 4)) };
             goalPos  = { x: COLS - 2, y: 2 + Math.floor(Math.random() * (ROWS - 4)) };
 
@@ -573,14 +621,12 @@
                 }
             }
 
-            // Helper: Grow a cohesive, contiguous blob from a seed point
             function growContiguousBlob(seedX, seedY, targetTile, targetSize) {
                 const blob = new Set();
                 const queue = [{ x: seedX, y: seedY }];
                 blob.add(`${seedX},${seedY}`);
 
                 while (queue.length > 0 && blob.size < targetSize) {
-                    // Pick from queue with bias to expand organically
                     const idx = Math.floor(Math.random() * queue.length);
                     const cur = queue.splice(idx, 1)[0];
 
@@ -588,7 +634,6 @@
                         { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
                         { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
                     ];
-                    // Shuffle directions
                     dirs.sort(() => Math.random() - 0.5);
 
                     for (const d of dirs) {
@@ -608,26 +653,25 @@
                 }
             }
 
-            // 1. Generate 2 to 3 Cohesive ROCK MOUNTAIN MASSIF Clusters
+            // 1. Rock Mountain Massifs (2-3 clusters)
             const rockCount = 2 + Math.floor(Math.random() * 2);
             for (let i = 0; i < rockCount; i++) {
                 const rx = 6 + Math.floor(Math.random() * (COLS - 14));
                 const ry = 2 + Math.floor(Math.random() * (ROWS - 5));
-                const massSize = 14 + Math.floor(Math.random() * 12); // Contiguous cluster of 14-25 rock tiles
+                const massSize = 14 + Math.floor(Math.random() * 12);
                 growContiguousBlob(rx, ry, TILE_ROCK, massSize);
             }
 
-            // 2. Generate 2 to 3 Cohesive SANDY DESERT DUNE Clusters
+            // 2. Sand Desert Dunes (2-3 clusters)
             const sandCount = 2 + Math.floor(Math.random() * 2);
             for (let i = 0; i < sandCount; i++) {
                 const sx = 5 + Math.floor(Math.random() * (COLS - 12));
                 const sy = 2 + Math.floor(Math.random() * (ROWS - 5));
-                const duneSize = 18 + Math.floor(Math.random() * 14); // Contiguous cluster of 18-32 sand tiles
+                const duneSize = 18 + Math.floor(Math.random() * 14);
                 growContiguousBlob(sx, sy, TILE_SAND, duneSize);
             }
 
-            // 3. Generate 3 to 4 Distinct FORTRESS WALL BARRIER Clusters
-            // (Continuous linear or L-shaped stone walls that act as chokepoints)
+            // 3. Fortress Obstacle Wall Barriers (3-4 linear/L chokepoints)
             const wallCount = 3 + Math.floor(Math.random() * 2);
             for (let i = 0; i < wallCount; i++) {
                 const wx = 7 + Math.floor(Math.random() * (COLS - 15));
@@ -646,7 +690,7 @@
                 }
             }
 
-            // 4. Guarantee open navigation route from start to goal
+            // Guarantee open path corridor
             let wx = startPos.x;
             let wy = startPos.y;
             while (wx < goalPos.x) {
@@ -668,7 +712,11 @@
             let cost = 1.0;
             if (grid[y][x] === TILE_ROCK) cost += weightRock;
             if (grid[y][x] === TILE_SAND) cost += weightSand;
-            cost += (hazardMap[y][x] * weightNear);
+            
+            // Inflation Penalty: High W_near drastically penalizes the inflated safety buffer
+            if (hazardMap[y][x] > 0) {
+                cost += (hazardMap[y][x] * weightNear * 2.5);
+            }
             return cost;
         }
 
@@ -790,7 +838,8 @@
 
         DOM.sliderNear.addEventListener('input', (e) => {
             weightNear = parseFloat(e.target.value);
-            DOM.valNear.textContent = `${weightNear.toFixed(1)}×`;
+            const r = Math.round(getInflationRadius());
+            DOM.valNear.textContent = `${weightNear.toFixed(1)}× (Radius: ${r})`;
             updateCellVisuals();
             runAStarInstant();
         });
