@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A* Pathfinding Academy — Terrain & Hazard Cost Visualizer</title>
+    
+    <!-- Retro Fonts & Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-canvas: #0f172a;        /* Deep Slate 900 */
+            --bg-panel: #1e293b;         /* Slate 800 */
+            --bg-card: #334155;          /* Slate 700 */
+            
+            /* Undertale Vibrant Colors */
+            --ut-gold: #fbbf24;          /* Amber 400 */
+            --ut-yellow: #fde047;        /* Yellow 300 */
+            --ut-cyan: #38bdf8;          /* Sky 400 */
+            --ut-green: #34d399;         /* Emerald 400 */
+            --ut-purple: #c084fc;        /* Purple 400 */
+            --ut-red: #f87171;           /* Red 400 */
+            --ut-orange: #fb923c;        /* Orange 400 */
+            --ut-rock: #a8a29e;          /* Stone 400 */
+            --ut-sand: #eab308;          /* Sand Gold 500 */
+
+            --font-pixel: 'Press Start 2P', monospace;
+            --font-retro: 'VT323', monospace;
+            --font-code: 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-canvas);
+            color: #f8fafc;
+            font-family: var(--font-retro);
+            font-size: 19px;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 15%, rgba(56, 189, 248, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 90% 20%, rgba(251, 191, 36, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 50% 90%, rgba(52, 211, 153, 0.08) 0%, transparent 50%);
+        }
+
+        /* Undertale Boxes */
+        .ut-box {
+            background-color: var(--bg-panel);
+            border: 3px solid #475569;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            position: relative;
+        }
+
+        .ut-box-gold { border-color: var(--ut-gold); box-shadow: 0 0 14px rgba(251, 191, 36, 0.25); }
+        .ut-box-cyan { border-color: var(--ut-cyan); box-shadow: 0 0 14px rgba(56, 189, 248, 0.25); }
+        .ut-box-green { border-color: var(--ut-green); box-shadow: 0 0 14px rgba(52, 211, 153, 0.25); }
+        .ut-box-purple { border-color: var(--ut-purple); box-shadow: 0 0 14px rgba(192, 132, 252, 0.25); }
+
+        /* CRT Filter */
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.2;
+        }
+        body.no-crt .crt-overlay { display: none; }
+
+        /* Pixel Soul Heart */
+        .pixel-heart {
+            display: inline-block;
+            width: 14px; height: 14px;
+            background-color: var(--ut-red);
+            clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 50% 75%, 18% 100%, 0% 35%);
+            filter: drop-shadow(0 0 5px rgba(248, 113, 113, 0.8));
+            animation: soulPulse 1.2s infinite alternate;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes soulPulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.18); }
+        }
+
+        /* Buttons & Badges */
+        .ut-btn {
+            font-family: var(--font-pixel);
+            font-size: 9px;
+            padding: 6px 12px;
+            background: #1e293b;
+            color: #f8fafc;
+            border: 2px solid #64748b;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .ut-btn:hover:not(:disabled) {
+            background: var(--ut-gold);
+            color: #0f172a;
+            border-color: #fff;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+            transform: translateY(-1px);
+        }
+        .ut-btn.active {
+            background: var(--ut-cyan);
+            color: #0f172a;
+            border-color: #fff;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+            font-weight: bold;
+        }
+        .ut-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .preset-btn {
+            font-family: var(--font-pixel);
+            font-size: 7.5px;
+            padding: 4px 8px;
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1.5px solid #475569;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .preset-btn:hover { color: #fff; border-color: var(--ut-gold); background: #334155; }
+        .preset-btn.active {
+            color: #0f172a;
+            background: var(--ut-gold);
+            border-color: #fff;
+            font-weight: bold;
+        }
+
+        /* Sliders / Cursors */
+        .cost-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 7px;
+            background: #334155;
+            border-radius: 4px;
+            outline: none;
+            border: 1px solid #475569;
+            cursor: pointer;
+        }
+        .cost-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 2px;
+            border: 2px solid #fff;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .slider-rock::-webkit-slider-thumb { background: #94a3b8; box-shadow: 0 0 8px #94a3b8; }
+        .slider-sand::-webkit-slider-thumb { background: #facc15; box-shadow: 0 0 8px #facc15; }
+        .slider-near::-webkit-slider-thumb { background: #f87171; box-shadow: 0 0 8px #f87171; }
+        .cost-slider:hover::-webkit-slider-thumb { transform: scale(1.2); }
+
+        /* Grid Tiles & Terrain Styling */
+        #grid-container {
+            display: grid;
+            gap: 1.5px;
+            background: #090e17;
+            padding: 4px;
+            border-radius: 4px;
+            border: 2px solid #334155;
+            aspect-ratio: 16 / 9;
+            max-height: 100%;
+            margin: auto;
+        }
+
+        .map-cell {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+            font-family: var(--font-code);
+            font-size: 7.5px;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .map-cell:hover {
+            outline: 2px solid #fff;
+            z-index: 30;
+            transform: scale(1.15);
+        }
+
+        /* Terrains */
+        .tile-normal {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #64748b;
+        }
+        .tile-rock {
+            background: #44403c;
+            border: 1px solid #78716c;
+            color: #d6d3d1;
+        }
+        .tile-rock::after {
+            content: '▲';
+            font-size: 8px;
+            color: #a8a29e;
+            opacity: 0.85;
+        }
+        .tile-sand {
+            background: #854d0e;
+            border: 1px solid #ca8a04;
+            color: #fef08a;
+        }
+        .tile-sand::after {
+            content: '░';
+            font-size: 9px;
+            color: #fde047;
+            opacity: 0.75;
+        }
+        .tile-wall {
+            background: #020617;
+            border: 1.5px solid #1e293b;
+            box-shadow: inset 0 0 6px rgba(0,0,0,0.9);
+        }
+        .tile-wall::after {
+            content: '■';
+            font-size: 9px;
+            color: #475569;
+        }
+
+        /* Proximity Hazard Aura (Near Obstacle) */
+        .hazard-1 {
+            box-shadow: inset 0 0 0 2px rgba(248, 113, 113, 0.45);
+        }
+        .hazard-2 {
+            box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.25);
+        }
+
+        /* Search States */
+        .cell-open {
+            background: rgba(56, 189, 248, 0.35) !important;
+            border-color: #38bdf8 !important;
+        }
+        .cell-closed {
+            background: rgba(192, 132, 252, 0.3) !important;
+            border-color: #c084fc !important;
+        }
+        .cell-path {
+            background: #fbbf24 !important;
+            border-color: #ffffff !important;
+            box-shadow: 0 0 10px #fbbf24;
+            z-index: 20;
+            animation: pathPulse 0.8s infinite alternate;
+        }
+
+        @keyframes pathPulse {
+            0% { transform: scale(1); filter: brightness(1); }
+            100% { transform: scale(1.08); filter: brightness(1.25); }
+        }
+
+        /* Start & Goal Nodes */
+        .cell-start {
+            background: #10b981 !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 0 14px #10b981;
+            z-index: 25;
+        }
+        .cell-goal {
+            background: #ef4444 !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 0 14px #ef4444;
+            z-index: 25;
+        }
+
+        /* Animated Character Sprite at Start */
+        .char-sprite {
+            position: absolute;
+            width: 28px;
+            height: 32px;
+            z-index: 40;
+            pointer-events: none;
+            transition: all 0.15s linear;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .char-body {
+            width: 20px;
+            height: 18px;
+            background: #38bdf8;
+            border: 2px solid #fff;
+            border-radius: 3px;
+            position: relative;
+            box-shadow: 0 0 10px #38bdf8;
+            animation: charBounce 0.2s infinite alternate;
+        }
+        .char-eyes {
+            position: absolute;
+            top: 3px; left: 3px; right: 3px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .char-eye { width: 3px; height: 5px; background: #0f172a; border-radius: 1px; }
+        .char-hat {
+            width: 14px; height: 7px;
+            background: #fbbf24;
+            border: 1px solid #000;
+            margin-bottom: -1px;
+            border-radius: 2px 2px 0 0;
+        }
+        .char-feet {
+            display: flex;
+            justify-content: space-between;
+            width: 16px;
+            margin-top: 1px;
+        }
+        .char-foot {
+            width: 5px; height: 4px;
+            background: #fde047;
+            border: 1px solid #000;
+            animation: charLegs 0.2s infinite alternate;
+        }
+        .char-foot:last-child { animation-delay: 0.1s; }
+
+        @keyframes charBounce { 0% { transform: translateY(0); } 100% { transform: translateY(-2px); } }
+        @keyframes charLegs { 0% { transform: translateY(0); } 100% { transform: translateY(2px); } }
+
+        /* Goal Flag Icon */
+        .goal-star {
+            font-size: 14px;
+            color: #ffffff;
+            filter: drop-shadow(0 0 6px #ffff00);
+            animation: starSpin 3s linear infinite;
+        }
+        @keyframes starSpin {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.15); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+
+        /* Log window */
+        .log-line { font-family: var(--font-code); font-size: 11.5px; line-height: 1.35; padding: 2px 0; border-bottom: 1px dashed #334155; }
+        .log-line .ts { color: #64748b; margin-right: 6px; font-size: 9.5px; }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--ut-gold); }
+    </style>
+</head>
+<body>
+
+    <!-- CRT Filter Overlay -->
+    <div class="crt-overlay"></div>
+
+    <!-- Top Header: Title & Master Buttons -->
+    <header class="bg-[#1e293b] border-b-2 border-[#475569] px-4 py-2 flex items-center justify-between shrink-0 gap-3">
+        <div class="flex items-center gap-3">
+            <span class="pixel-heart"></span>
+            <div>
+                <span class="font-bold text-xs tracking-wider" style="font-family: var(--font-pixel); color: var(--ut-gold);">A* PATHFINDING ACADEMY</span>
+                <span class="text-[11px] text-slate-300 font-mono block">DYNAMIC TERRAIN & HAZARD COST-WEIGHTED SIMULATOR</span>
+            </div>
+        </div>
+
+        <!-- Presets -->
+        <div class="flex items-center gap-1.5 bg-[#0f172a] p-1 rounded border border-slate-700">
+            <span class="text-[9px] font-mono text-slate-400 px-1">MAPS:</span>
+            <button class="preset-btn active" data-preset="mountain">1. Mountain & Dunes</button>
+            <button class="preset-btn" data-preset="choke">2. Hazard Chokepoints</button>
+            <button class="preset-btn" data-preset="dune_valley">3. Dune vs Ridge</button>
+            <button class="preset-btn" data-preset="clear">4. Open Plains</button>
+        </div>
+
+        <!-- Master Controls -->
+        <div class="flex items-center gap-2">
+            <button class="ut-btn" id="btn-play"><span style="color: var(--ut-green);">▶</span> RUN A*</button>
+            <button class="ut-btn" id="btn-walk"><span style="color: var(--ut-yellow);">🚶</span> WALK</button>
+            <button class="ut-btn" id="btn-step"><span>⏭</span> STEP</button>
+            <button class="ut-btn" id="btn-clear"><span>↺</span> CLEAR PATH</button>
+            <button class="ut-btn" id="btn-sound"><span>🔊</span> SOUND</button>
+            <button class="ut-btn" id="btn-crt">CRT</button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden p-3 gap-3">
+        
+        <!-- Left 8/12: The Interactive Pathfinding Arena -->
+        <div class="w-8/12 flex flex-col gap-2.5 overflow-hidden">
+            
+            <!-- Grid Container Box -->
+            <div class="ut-box ut-box-cyan flex-1 flex flex-col p-2.5 overflow-hidden relative">
+                
+                <!-- Grid Status Bar -->
+                <div class="flex justify-between items-center border-b border-cyan-400/30 pb-1.5 mb-2 font-mono text-xs">
+                    <div class="flex items-center gap-3">
+                        <span class="text-cyan-300 font-bold" style="font-family: var(--font-pixel); font-size: 9px;">MAP ARENA (32 × 18 TILES)</span>
+                        <span class="text-slate-400 text-[11px]">[CLICK TILE TO MOVE START OR PAINT]</span>
+                    </div>
+                    
+                    <!-- Brush Tools -->
+                    <div class="flex items-center gap-1">
+                        <span class="text-[10px] text-slate-400 mr-1">BRUSH:</span>
+                        <button class="ut-btn active" id="brush-start" title="Click grid to move start point">START 🚩</button>
+                        <button class="ut-btn" id="brush-wall" title="Paint Obstacle Wall">WALL ■</button>
+                        <button class="ut-btn" id="brush-rock" title="Paint Rocky Terrain">ROCK ▲</button>
+                        <button class="ut-btn" id="brush-sand" title="Paint Sandy Terrain">SAND ░</button>
+                        <button class="ut-btn" id="brush-clear" title="Clear Tile">PLAIN</button>
+                    </div>
+                </div>
+
+                <!-- Live Grid Stage -->
+                <div class="flex-1 relative flex items-center justify-center overflow-hidden" id="stage-wrapper">
+                    <div id="grid-container"></div>
+                    <!-- Animated Walking Character Element -->
+                    <div class="char-sprite" id="character-sprite" style="display: none;">
+                        <div class="char-hat"></div>
+                        <div class="char-body">
+                            <div class="char-eyes">
+                                <div class="char-eye"></div>
+                                <div class="char-eye"></div>
+                            </div>
+                        </div>
+                        <div class="char-feet">
+                            <div class="char-foot"></div>
+                            <div class="char-foot"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid Legend -->
+                <div class="flex items-center justify-between border-t border-slate-700/80 pt-1.5 mt-2 font-mono text-[11px] text-slate-300">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-[#1e293b] border border-slate-500 rounded-sm"></span> Normal (1.0)</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-[#854d0e] border border-yellow-500 rounded-sm"></span> Sand (1 + W_sand)</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-[#44403c] border border-stone-400 rounded-sm"></span> Rock (1 + W_rock)</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-[#020617] border border-slate-700 rounded-sm"></span> Obstacle (∞)</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-[#f87171]/20 border border-red-400 rounded-sm"></span> Near-Obstacle Aura</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-sky-400/40 border border-sky-400 rounded-sm"></span> Open</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-400/30 border border-purple-400 rounded-sm"></span> Closed</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-amber-400 border border-white rounded-sm"></span> A* Optimal Path</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Execution Logs & Dialogue Console -->
+            <div class="h-32 ut-box ut-box-gold p-2 flex flex-col shrink-0 overflow-hidden">
+                <div class="flex justify-between items-center border-b border-amber-400/30 pb-1 mb-1">
+                    <div class="text-[10px] font-bold text-yellow-300" style="font-family: var(--font-pixel);">
+                        <span class="pixel-heart"></span> A* HEURISTIC & EXPANSION TRACE
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-mono" id="a-star-stats">Nodes Explored: 0 | Path Cost: 0.00</span>
+                </div>
+                <div class="flex-1 overflow-y-auto" id="console-log"></div>
+            </div>
+
+        </div>
+
+        <!-- Right 4/12: 3 Cost Sliders & Mathematical Breakdown -->
+        <div class="w-4/12 flex flex-col gap-2.5 overflow-hidden">
+            
+            <!-- 3 Cursors / Sliders Card -->
+            <div class="ut-box ut-box-purple p-3 flex flex-col gap-3 shrink-0">
+                <div class="flex justify-between items-center border-b border-purple-400/30 pb-1">
+                    <span class="text-[10px] font-bold text-purple-300" style="font-family: var(--font-pixel);">
+                        ★ 3 COST WEIGHT CURSORS
+                    </span>
+                    <button class="text-[9px] text-yellow-300 font-mono hover:underline" id="btn-reset-weights">RESET SLIDERS</button>
+                </div>
+
+                <!-- Cursor 1: Rocky Structure Weight -->
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between items-center text-xs font-mono">
+                        <span class="flex items-center gap-1.5 font-bold text-stone-300">
+                            <span>▲</span> ROCKY STRUCTURE WEIGHT (W_rock)
+                        </span>
+                        <span class="text-yellow-300 font-bold text-sm" id="val-rock">4.0×</span>
+                    </div>
+                    <input type="range" min="0" max="15" step="0.5" value="4.0" class="cost-slider slider-rock" id="slider-rock">
+                    <span class="text-[10px] text-slate-400 font-mono leading-tight">Cost penalty for rugged mountain crags. High weight forces path to detour.</span>
+                </div>
+
+                <!-- Cursor 2: Sandy Structure Weight -->
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between items-center text-xs font-mono">
+                        <span class="flex items-center gap-1.5 font-bold text-yellow-300">
+                            <span>░</span> SANDY STRUCTURE WEIGHT (W_sand)
+                        </span>
+                        <span class="text-yellow-300 font-bold text-sm" id="val-sand">2.5×</span>
+                    </div>
+                    <input type="range" min="0" max="15" step="0.5" value="2.5" class="cost-slider slider-sand" id="slider-sand">
+                    <span class="text-[10px] text-slate-400 font-mono leading-tight">Friction penalty for loose desert dunes. Moderate cost drag.</span>
+                </div>
+
+                <!-- Cursor 3: Near-Obstacle Clearance Penalty -->
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between items-center text-xs font-mono">
+                        <span class="flex items-center gap-1.5 font-bold text-red-400">
+                            <span>⚠️</span> NEAR-OBSTACLE HAZARD WEIGHT (W_near)
+                        </span>
+                        <span class="text-yellow-300 font-bold text-sm" id="val-near">5.0×</span>
+                    </div>
+                    <input type="range" min="0" max="20" step="0.5" value="5.0" class="cost-slider slider-near" id="slider-near">
+                    <span class="text-[10px] text-slate-400 font-mono leading-tight">Safety buffer penalty. High weight forces agent to center in corridors, avoiding wall-hugging.</span>
+                </div>
+            </div>
+
+            <!-- Mathematical Formula Breakdown -->
+            <div class="ut-box ut-box-green p-3 flex flex-col gap-2 shrink-0">
+                <span class="text-[10px] font-bold text-emerald-300 border-b border-emerald-400/30 pb-1" style="font-family: var(--font-pixel);">
+                    A* MATHEMATICAL COST EVALUATION
+                </span>
+                
+                <div class="bg-[#0f172a] p-2 rounded border border-slate-700 font-mono text-xs flex flex-col gap-1">
+                    <div class="text-yellow-300 font-bold">f(n) = g(n) + h(n)</div>
+                    <div class="text-[11px] text-slate-300">
+                        • <span class="text-sky-400">g(n)</span>: Exact accumulated cost from start<br>
+                        • <span class="text-purple-400">h(n)</span>: Euclidean heuristic to goal (h = √((Δx)² + (Δy)²))<br>
+                        • <span class="text-emerald-400">Step Cost</span> = d × (1.0 + W_rock·R + W_sand·S + W_near·H)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Tile Inspector (On Hover) -->
+            <div class="ut-box flex-1 p-3 flex flex-col gap-1 overflow-y-auto">
+                <div class="flex justify-between items-center border-b border-slate-600 pb-1">
+                    <span class="text-[10px] font-bold text-cyan-300" style="font-family: var(--font-pixel);">
+                        HOVER CELL INSPECTOR
+                    </span>
+                    <span class="text-xs text-yellow-300 font-mono font-bold" id="insp-coord">(X: --, Y: --)</span>
+                </div>
+
+                <div class="flex flex-col gap-1 text-xs font-mono mt-1 text-slate-300" id="insp-body">
+                    <div class="flex justify-between"><span>Tile Type:</span><span class="font-bold text-white" id="insp-type">Hover over map</span></div>
+                    <div class="flex justify-between"><span>Base Movement Cost:</span><span class="text-slate-400" id="insp-base">--</span></div>
+                    <div class="flex justify-between text-stone-300"><span>Rock Penalty:</span><span id="insp-rock">--</span></div>
+                    <div class="flex justify-between text-yellow-300"><span>Sand Penalty:</span><span id="insp-sand">--</span></div>
+                    <div class="flex justify-between text-red-400"><span>Near-Obstacle Hazard:</span><span id="insp-hazard">--</span></div>
+                    <div class="border-t border-slate-700 pt-1 flex justify-between font-bold text-emerald-400"><span>Total Step Weight:</span><span id="insp-total">--</span></div>
+                    <div class="border-t border-slate-700 pt-1 flex justify-between"><span>A* g-cost (from start):</span><span class="text-sky-300" id="insp-g">--</span></div>
+                    <div class="flex justify-between"><span>A* h-cost (to goal):</span><span class="text-purple-300" id="insp-h">--</span></div>
+                    <div class="flex justify-between font-bold text-yellow-300"><span>A* f-score (g + h):</span><span id="insp-f">--</span></div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Bottom Undertale Battle HUD -->
+    <footer class="bg-[#1e293b] border-t-2 border-[#475569] px-4 py-1.5 flex items-center justify-between shrink-0 font-mono text-xs">
+        <div class="flex items-center gap-4">
+            <span class="font-bold text-red-400" style="font-family: var(--font-pixel);"><span class="pixel-heart"></span> A* HERO</span>
+            <span class="font-bold text-yellow-300" style="font-family: var(--font-pixel);">LV 20</span>
+            <div class="flex items-center gap-2">
+                <span style="font-family: var(--font-pixel); font-size: 8px;">DETERMINATION</span>
+                <div class="w-28 h-2.5 bg-slate-700 border border-slate-400 rounded-sm overflow-hidden">
+                    <div class="h-full bg-yellow-400" id="hud-hp-bar" style="width: 100%;"></div>
+                </div>
+                <span style="font-family: var(--font-pixel); font-size: 8px;">100/100</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-slate-300 text-[11px]" id="hud-info">A* Path Ready. Click anywhere on grid to reposition start or paint terrain!</span>
+            <span class="text-yellow-400" style="font-family: var(--font-pixel); font-size: 8px;">[SPACE / RUN]</span>
+        </div>
+    </footer>
+
+    <!-- A* Engine & Interactive Visualizer Script -->
+    <script>
+        // 8-Bit Web Audio Synthesizer
+        class RetroAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AC();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playTone(freq, type='square', duration=0.06, vol=0.2) {
+                if (this.muted) return;
+                this.init();
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + duration);
+                } catch(e) {}
+            }
+            blip() { this.playTone(260 + Math.random() * 80, 'square', 0.03, 0.15); }
+            step() { this.playTone(180, 'triangle', 0.04, 0.2); }
+            chime() {
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((n, i) => {
+                    setTimeout(() => this.playTone(n, 'sine', 0.14, 0.25), i * 80);
+                });
+            }
+            error() { this.playTone(120, 'sawtooth', 0.2, 0.3); }
+        }
+
+        const audio = new RetroAudio();
+
+        // Grid Dimensions
+        const COLS = 32;
+        const ROWS = 18;
+
+        // Tile Type Constants
+        const TILE_NORMAL = 0;
+        const TILE_ROCK   = 1;
+        const TILE_SAND   = 2;
+        const TILE_WALL   = 3;
+
+        // Grid Matrix & State
+        let grid = [];
+        let hazardMap = []; // Proximity hazard multiplier for near-obstacle areas
+        let startPos = { x: 1, y: 9 };
+        let goalPos  = { x: 30, y: 9 };
+
+        // Cost Weights (Modified by 3 Cursors)
+        let weightRock = 4.0;
+        let weightSand = 2.5;
+        let weightNear = 5.0;
+
+        // Brush Mode
+        let currentBrush = 'start'; // 'start', 'wall', 'rock', 'sand', 'clear'
+        let isMouseDown = false;
+        let isWalking = false;
+
+        // A* State
+        let openSet = [];
+        let closedSet = new Set();
+        let pathNodes = [];
+        let nodeDetails = new Map(); // key -> { g, h, f, parent }
+
+        const DOM = {
+            gridContainer: document.getElementById('grid-container'),
+            stageWrapper: document.getElementById('stage-wrapper'),
+            charSprite: document.getElementById('character-sprite'),
+            consoleLog: document.getElementById('console-log'),
+            statsLabel: document.getElementById('a-star-stats'),
+            sliderRock: document.getElementById('slider-rock'),
+            sliderSand: document.getElementById('slider-sand'),
+            sliderNear: document.getElementById('slider-near'),
+            valRock: document.getElementById('val-rock'),
+            valSand: document.getElementById('val-sand'),
+            valNear: document.getElementById('val-near'),
+            btnPlay: document.getElementById('btn-play'),
+            btnWalk: document.getElementById('btn-walk'),
+            btnStep: document.getElementById('btn-step'),
+            btnClear: document.getElementById('btn-clear'),
+            btnSound: document.getElementById('btn-sound'),
+            btnCrt: document.getElementById('btn-crt'),
+            btnResetWeights: document.getElementById('btn-reset-weights'),
+            presetBtns: document.querySelectorAll('.preset-btn'),
+            brushBtns: {
+                start: document.getElementById('brush-start'),
+                wall: document.getElementById('brush-wall'),
+                rock: document.getElementById('brush-rock'),
+                sand: document.getElementById('brush-sand'),
+                clear: document.getElementById('brush-clear')
+            },
+            inspCoord: document.getElementById('insp-coord'),
+            inspType: document.getElementById('insp-type'),
+            inspBase: document.getElementById('insp-base'),
+            inspRock: document.getElementById('insp-rock'),
+            inspSand: document.getElementById('insp-sand'),
+            inspHazard: document.getElementById('insp-hazard'),
+            inspTotal: document.getElementById('insp-total'),
+            inspG: document.getElementById('insp-g'),
+            inspH: document.getElementById('insp-h'),
+            inspF: document.getElementById('insp-f')
+        };
+
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+        function log(msg) {
+            const now = new Date();
+            const ts = `${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}.${now.getMilliseconds().toString().padStart(3,'0')}`;
+            const div = document.createElement('div');
+            div.className = 'log-line';
+            div.innerHTML = `<span class="ts">[${ts}]</span> ${msg}`;
+            DOM.consoleLog.appendChild(div);
+            DOM.consoleLog.scrollTop = DOM.consoleLog.scrollHeight;
+        }
+
+        // Initialize 2D Grid
+        function initGrid() {
+            grid = [];
+            hazardMap = [];
+            for (let y = 0; y < ROWS; y++) {
+                grid[y] = [];
+                hazardMap[y] = [];
+                for (let x = 0; x < COLS; x++) {
+                    grid[y][x] = TILE_NORMAL;
+                    hazardMap[y][x] = 0.0;
+                }
+            }
+        }
+
+        // Calculate Hazard Map (Proximity Decay to Walls)
+        function computeHazardMap() {
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (grid[y][x] === TILE_WALL) {
+                        hazardMap[y][x] = 0;
+                        continue;
+                    }
+                    let minD = 999;
+                    for (let dy = -2; dy <= 2; dy++) {
+                        for (let dx = -2; dx <= 2; dx++) {
+                            const ny = y + dy;
+                            const nx = x + dx;
+                            if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
+                                if (grid[ny][nx] === TILE_WALL) {
+                                    const d = Math.hypot(dx, dy);
+                                    if (d < minD) minD = d;
+                                }
+                            }
+                        }
+                    }
+                    if (minD <= 1.0) hazardMap[y][x] = 1.0;          // Distance 1 (High hazard)
+                    else if (minD <= 1.5) hazardMap[y][x] = 0.5;     // Diagonal 1.41
+                    else if (minD <= 2.1) hazardMap[y][x] = 0.25;    // Distance 2 (Low hazard)
+                    else hazardMap[y][x] = 0.0;
+                }
+            }
+        }
+
+        // Build DOM Table
+        function buildGridDOM() {
+            DOM.gridContainer.innerHTML = '';
+            DOM.gridContainer.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+            DOM.gridContainer.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
+
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'map-cell tile-normal';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.id = `cell-${x}-${y}`;
+
+                    cell.addEventListener('mousedown', (e) => {
+                        isMouseDown = true;
+                        handleCellInteraction(x, y);
+                    });
+
+                    cell.addEventListener('mouseenter', (e) => {
+                        if (isMouseDown && currentBrush !== 'start') {
+                            handleCellInteraction(x, y);
+                        }
+                        inspectCell(x, y);
+                    });
+
+                    DOM.gridContainer.appendChild(cell);
+                }
+            }
+            window.addEventListener('mouseup', () => { isMouseDown = false; });
+        }
+
+        // Render Tile Classes & Hazards
+        function updateCellVisuals() {
+            computeHazardMap();
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const cell = document.getElementById(`cell-${x}-${y}`);
+                    if (!cell) continue;
+
+                    cell.className = 'map-cell';
+
+                    // Base Terrain
+                    if (grid[y][x] === TILE_WALL) cell.classList.add('tile-wall');
+                    else if (grid[y][x] === TILE_ROCK) cell.classList.add('tile-rock');
+                    else if (grid[y][x] === TILE_SAND) cell.classList.add('tile-sand');
+                    else cell.classList.add('tile-normal');
+
+                    // Hazard Aura
+                    if (grid[y][x] !== TILE_WALL) {
+                        if (hazardMap[y][x] >= 0.8) cell.classList.add('hazard-1');
+                        else if (hazardMap[y][x] > 0) cell.classList.add('hazard-2');
+                    }
+
+                    // Start / Goal
+                    if (x === startPos.x && y === startPos.y) {
+                        cell.classList.add('cell-start');
+                        cell.innerHTML = '🚩';
+                    } else if (x === goalPos.x && y === goalPos.y) {
+                        cell.classList.add('cell-goal');
+                        cell.innerHTML = '<span class="goal-star">★</span>';
+                    } else {
+                        cell.innerHTML = '';
+                    }
+                }
+            }
+            positionCharacterSprite(startPos.x, startPos.y);
+        }
+
+        // Position Character Sprite over Start
+        function positionCharacterSprite(gx, gy) {
+            const cell = document.getElementById(`cell-${gx}-${gy}`);
+            if (!cell || !DOM.charSprite) return;
+            const rect = cell.getBoundingClientRect();
+            const wrapRect = DOM.stageWrapper.getBoundingClientRect();
+
+            DOM.charSprite.style.display = 'flex';
+            DOM.charSprite.style.left = `${rect.left - wrapRect.left + rect.width / 2 - 14}px`;
+            DOM.charSprite.style.top = `${rect.top - wrapRect.top - 24}px`;
+        }
+
+        // Handle Tile Paint or Start Teleport
+        function handleCellInteraction(x, y) {
+            if (currentBrush === 'start') {
+                if (grid[y][x] === TILE_WALL) return; // Cannot start inside wall
+                startPos = { x, y };
+                audio.step();
+                log(`Hero Start Point moved to (${x}, ${y})! Recalculating path...`);
+            } else if (currentBrush === 'wall') {
+                if ((x === startPos.x && y === startPos.y) || (x === goalPos.x && y === goalPos.y)) return;
+                grid[y][x] = TILE_WALL;
+                audio.blip();
+            } else if (currentBrush === 'rock') {
+                grid[y][x] = TILE_ROCK;
+                audio.blip();
+            } else if (currentBrush === 'sand') {
+                grid[y][x] = TILE_SAND;
+                audio.blip();
+            } else if (currentBrush === 'clear') {
+                grid[y][x] = TILE_NORMAL;
+            }
+            updateCellVisuals();
+            runAStarInstant();
+        }
+
+        // Map Presets
+        function applyPreset(preset) {
+            initGrid();
+            startPos = { x: 1, y: 9 };
+            goalPos  = { x: 30, y: 9 };
+
+            if (preset === 'mountain') {
+                // Mountain Crag Barriers
+                for (let y = 3; y < 15; y++) {
+                    if (y !== 6 && y !== 12) grid[y][10] = TILE_WALL;
+                }
+                for (let y = 1; y < 17; y++) {
+                    if (y !== 4 && y !== 14) grid[y][21] = TILE_WALL;
+                }
+                // Sandy Dunes
+                for (let y = 5; y < 14; y++) {
+                    for (let x = 3; x < 9; x++) grid[y][x] = TILE_SAND;
+                }
+                // Rocky Passages
+                for (let y = 1; y < 7; y++) {
+                    for (let x = 11; x < 20; x++) grid[y][x] = TILE_ROCK;
+                }
+                for (let y = 11; y < 17; y++) {
+                    for (let x = 11; x < 20; x++) grid[y][x] = TILE_ROCK;
+                }
+                log("Preset Loaded: Mountain & Desert Dunes. Demonstrates path trade-off between rocks and sand.");
+            } else if (preset === 'choke') {
+                // Narrow Chokepoints with high walls
+                for (let y = 0; y < 18; y++) {
+                    if (y !== 2 && y !== 9 && y !== 16) grid[y][15] = TILE_WALL;
+                }
+                // Corridor 9 is narrow (1 tile), Corridor 2 & 16 are wide open
+                grid[8][14] = TILE_WALL; grid[10][14] = TILE_WALL;
+                grid[8][16] = TILE_WALL; grid[10][16] = TILE_WALL;
+                // Add some sand in wide corridor
+                for (let x = 10; x < 20; x++) grid[2][x] = TILE_SAND;
+                log("Preset Loaded: Hazard Chokepoints. Watch Near-Obstacle weight reject narrow 1-tile tunnels!");
+            } else if (preset === 'dune_valley') {
+                // Top Half: Rocky Ridge
+                for (let y = 0; y < 8; y++) {
+                    for (let x = 5; x < 27; x++) grid[y][x] = TILE_ROCK;
+                }
+                // Bottom Half: Sandy Desert Valley
+                for (let y = 10; y < 18; y++) {
+                    for (let x = 5; x < 27; x++) grid[y][x] = TILE_SAND;
+                }
+                // Middle divider with open gateway
+                for (let x = 8; x < 24; x++) {
+                    if (x !== 16) grid[8][x] = TILE_WALL;
+                    if (x !== 16) grid[9][x] = TILE_WALL;
+                }
+                log("Preset Loaded: Dune vs Ridge Valley. Alter W_rock vs W_sand to flip the path trajectory!");
+            } else if (preset === 'clear') {
+                // Open Plains with few obstacles
+                grid[7][15] = TILE_WALL; grid[8][15] = TILE_WALL; grid[9][15] = TILE_WALL; grid[10][15] = TILE_WALL;
+                log("Preset Loaded: Open Plains. Clear Euclidean pathfinding.");
+            }
+
+            updateCellVisuals();
+            runAStarInstant();
+        }
+
+        // Cost Calculation for a Tile
+        function getTileTraversalCost(x, y) {
+            if (grid[y][x] === TILE_WALL) return Infinity;
+
+            let cost = 1.0; // Base terrain cost
+            if (grid[y][x] === TILE_ROCK) cost += weightRock;
+            if (grid[y][x] === TILE_SAND) cost += weightSand;
+            cost += (hazardMap[y][x] * weightNear);
+
+            return cost;
+        }
+
+        // Euclidean Distance Heuristic
+        function heuristic(x1, y1, x2, y2) {
+            return Math.hypot(x1 - x2, y1 - y2);
+        }
+
+        // A* Pathfinding Algorithm (Core)
+        function runAStar() {
+            nodeDetails.clear();
+            closedSet.clear();
+            pathNodes = [];
+
+            // Reset visual search marks
+            document.querySelectorAll('.map-cell').forEach(c => {
+                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
+            });
+
+            const startKey = `${startPos.x},${startPos.y}`;
+            const goalKey  = `${goalPos.x},${goalPos.y}`;
+
+            const startNode = {
+                x: startPos.x,
+                y: startPos.y,
+                g: 0,
+                h: heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y),
+                f: 0,
+                parent: null
+            };
+            startNode.f = startNode.g + startNode.h;
+
+            openSet = [startNode];
+            nodeDetails.set(startKey, startNode);
+
+            while (openSet.length > 0) {
+                // Find node with lowest f-score
+                let lowestIdx = 0;
+                for (let i = 1; i < openSet.length; i++) {
+                    if (openSet[i].f < openSet[lowestIdx].f) lowestIdx = i;
+                }
+
+                const current = openSet.splice(lowestIdx, 1)[0];
+                const currentKey = `${current.x},${current.y}`;
+                closedSet.add(currentKey);
+
+                // Goal reached!
+                if (current.x === goalPos.x && current.y === goalPos.y) {
+                    reconstructPath(current);
+                    return true;
+                }
+
+                // Explore 8-way neighbors
+                const neighbors = [
+                    { dx: 0, dy: -1, diag: false }, // N
+                    { dx: 1, dy: 0,  diag: false }, // E
+                    { dx: 0, dy: 1,  diag: false }, // S
+                    { dx: -1, dy: 0, diag: false }, // W
+                    { dx: 1, dy: -1, diag: true },  // NE
+                    { dx: 1, dy: 1,  diag: true },  // SE
+                    { dx: -1, dy: 1, diag: true },  // SW
+                    { dx: -1, dy: -1, diag: true }  // NW
+                ];
+
+                for (const nb of neighbors) {
+                    const nx = current.x + nb.dx;
+                    const ny = current.y + nb.dy;
+
+                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+                    if (grid[ny][nx] === TILE_WALL) continue;
+
+                    // Prevent corner cutting across diagonal walls
+                    if (nb.diag) {
+                        if (grid[current.y][nx] === TILE_WALL || grid[ny][current.x] === TILE_WALL) continue;
+                    }
+
+                    const neighborKey = `${nx},${ny}`;
+                    if (closedSet.has(neighborKey)) continue;
+
+                    const stepDist = nb.diag ? Math.SQRT2 : 1.0;
+                    const tileCost = getTileTraversalCost(nx, ny);
+                    const tentativeG = current.g + (stepDist * tileCost);
+
+                    let neighborNode = nodeDetails.get(neighborKey);
+
+                    if (!neighborNode) {
+                        neighborNode = {
+                            x: nx,
+                            y: ny,
+                            g: tentativeG,
+                            h: heuristic(nx, ny, goalPos.x, goalPos.y),
+                            f: 0,
+                            parent: current
+                        };
+                        neighborNode.f = neighborNode.g + neighborNode.h;
+                        nodeDetails.set(neighborKey, neighborNode);
+                        openSet.push(neighborNode);
+                    } else if (tentativeG < neighborNode.g) {
+                        neighborNode.g = tentativeG;
+                        neighborNode.f = neighborNode.g + neighborNode.h;
+                        neighborNode.parent = current;
+                    }
+                }
+            }
+
+            log("A* Search Complete: NO VALID PATH FOUND to goal (Path blocked by walls)!");
+            DOM.statsLabel.textContent = `Nodes Explored: ${closedSet.size} | NO PATH`;
+            audio.error();
+            return false;
+        }
+
+        // Reconstruct Optimal Path from Goal to Start
+        function reconstructPath(goalNode) {
+            pathNodes = [];
+            let curr = goalNode;
+            while (curr) {
+                pathNodes.push(curr);
+                curr = curr.parent;
+            }
+            pathNodes.reverse();
+
+            // Paint Path
+            pathNodes.forEach((node, idx) => {
+                const cell = document.getElementById(`cell-${node.x}-${node.y}`);
+                if (cell && (node.x !== startPos.x || node.y !== startPos.y) && (node.x !== goalPos.x || node.y !== goalPos.y)) {
+                    cell.classList.add('cell-path');
+                }
+            });
+
+            const totalCost = goalNode.g.toFixed(2);
+            DOM.statsLabel.textContent = `Explored: ${closedSet.size} | Path Length: ${pathNodes.length} | Cost G: ${totalCost}`;
+            log(`Optimal Path Calculated! Length = ${pathNodes.length} steps, Total Cost G = ${totalCost}`);
+        }
+
+        // Instant A* (Used on Slider Drag or Start Move)
+        function runAStarInstant() {
+            if (isWalking) return;
+            const found = runAStar();
+            if (found) audio.blip();
+        }
+
+        // Animated A* Search Step-by-Step Visualizer
+        async function runAStarAnimated() {
+            if (isWalking) return;
+            nodeDetails.clear();
+            closedSet.clear();
+            pathNodes = [];
+
+            // Reset visual search marks
+            document.querySelectorAll('.map-cell').forEach(c => {
+                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
+            });
+
+            log("Starting Animated A* Search Step-by-Step...");
+            const startKey = `${startPos.x},${startPos.y}`;
+            const startNode = {
+                x: startPos.x, y: startPos.y,
+                g: 0, h: heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y),
+                f: 0, parent: null
+            };
+            startNode.f = startNode.g + startNode.h;
+            openSet = [startNode];
+            nodeDetails.set(startKey, startNode);
+
+            DOM.btnPlay.disabled = true;
+
+            while (openSet.length > 0) {
+                let lowestIdx = 0;
+                for (let i = 1; i < openSet.length; i++) {
+                    if (openSet[i].f < openSet[lowestIdx].f) lowestIdx = i;
+                }
+
+                const current = openSet.splice(lowestIdx, 1)[0];
+                const currentKey = `${current.x},${current.y}`;
+                closedSet.add(currentKey);
+
+                const curCell = document.getElementById(`cell-${current.x}-${current.y}`);
+                if (curCell && (current.x !== startPos.x || current.y !== startPos.y) && (current.x !== goalPos.x || current.y !== goalPos.y)) {
+                    curCell.classList.remove('cell-open');
+                    curCell.classList.add('cell-closed');
+                }
+
+                if (current.x === goalPos.x && current.y === goalPos.y) {
+                    reconstructPath(current);
+                    audio.chime();
+                    DOM.btnPlay.disabled = false;
+                    return;
+                }
+
+                const neighbors = [
+                    { dx: 0, dy: -1, diag: false },
+                    { dx: 1, dy: 0,  diag: false },
+                    { dx: 0, dy: 1,  diag: false },
+                    { dx: -1, dy: 0, diag: false },
+                    { dx: 1, dy: -1, diag: true },
+                    { dx: 1, dy: 1,  diag: true },
+                    { dx: -1, dy: 1, diag: true },
+                    { dx: -1, dy: -1, diag: true }
+                ];
+
+                for (const nb of neighbors) {
+                    const nx = current.x + nb.dx;
+                    const ny = current.y + nb.dy;
+
+                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+                    if (grid[ny][nx] === TILE_WALL) continue;
+                    if (nb.diag && (grid[current.y][nx] === TILE_WALL || grid[ny][current.x] === TILE_WALL)) continue;
+
+                    const neighborKey = `${nx},${ny}`;
+                    if (closedSet.has(neighborKey)) continue;
+
+                    const stepDist = nb.diag ? Math.SQRT2 : 1.0;
+                    const tileCost = getTileTraversalCost(nx, ny);
+                    const tentativeG = current.g + (stepDist * tileCost);
+
+                    let neighborNode = nodeDetails.get(neighborKey);
+
+                    if (!neighborNode) {
+                        neighborNode = {
+                            x: nx, y: ny, g: tentativeG,
+                            h: heuristic(nx, ny, goalPos.x, goalPos.y),
+                            f: 0, parent: current
+                        };
+                        neighborNode.f = neighborNode.g + neighborNode.h;
+                        nodeDetails.set(neighborKey, neighborNode);
+                        openSet.push(neighborNode);
+
+                        const nbCell = document.getElementById(`cell-${nx}-${ny}`);
+                        if (nbCell && (nx !== startPos.x || ny !== startPos.y) && (nx !== goalPos.x || ny !== goalPos.y)) {
+                            nbCell.classList.add('cell-open');
+                        }
+                    } else if (tentativeG < neighborNode.g) {
+                        neighborNode.g = tentativeG;
+                        neighborNode.f = neighborNode.g + neighborNode.h;
+                        neighborNode.parent = current;
+                    }
+                }
+
+                audio.blip();
+                await sleep(15);
+            }
+
+            DOM.btnPlay.disabled = false;
+        }
+
+        // Animate Character Walking along the Path
+        async function walkCharacterAlongPath() {
+            if (pathNodes.length === 0) runAStar();
+            if (pathNodes.length === 0 || isWalking) return;
+
+            isWalking = true;
+            DOM.btnWalk.disabled = true;
+            log("Character beginning walk along optimal A* path...");
+
+            for (let i = 0; i < pathNodes.length; i++) {
+                const node = pathNodes[i];
+                positionCharacterSprite(node.x, node.y);
+                audio.step();
+                await sleep(120);
+            }
+
+            audio.chime();
+            log("Character reached the Goal successfully! ★");
+            isWalking = false;
+            DOM.btnWalk.disabled = false;
+        }
+
+        // Cell Hover Inspector
+        function inspectCell(x, y) {
+            DOM.inspCoord.textContent = `(X: ${x}, Y: ${y})`;
+            
+            const type = grid[y][x];
+            let typeName = "Normal Plains";
+            if (type === TILE_WALL) typeName = "Obstacle Wall (Blocked)";
+            else if (type === TILE_ROCK) typeName = "Rocky Mountain Crags";
+            else if (type === TILE_SAND) typeName = "Sandy Desert Dunes";
+
+            DOM.inspType.textContent = typeName;
+            DOM.inspBase.textContent = type === TILE_WALL ? "Infinity (Blocked)" : "1.00";
+            DOM.inspRock.textContent = type === TILE_ROCK ? `+${weightRock.toFixed(1)}` : "+0.0";
+            DOM.inspSand.textContent = type === TILE_SAND ? `+${weightSand.toFixed(1)}` : "+0.0";
+
+            const hazard = (hazardMap[y][x] * weightNear).toFixed(2);
+            DOM.inspHazard.textContent = `+${hazard} (Dist: ${hazardMap[y][x].toFixed(2)})`;
+
+            const total = type === TILE_WALL ? "Infinity" : getTileTraversalCost(x, y).toFixed(2);
+            DOM.inspTotal.textContent = total;
+
+            const key = `${x},${y}`;
+            const node = nodeDetails.get(key);
+            if (node) {
+                DOM.inspG.textContent = node.g.toFixed(2);
+                DOM.inspH.textContent = node.h.toFixed(2);
+                DOM.inspF.textContent = node.f.toFixed(2);
+            } else {
+                DOM.inspG.textContent = "Not Explored";
+                DOM.inspH.textContent = heuristic(x, y, goalPos.x, goalPos.y).toFixed(2);
+                DOM.inspF.textContent = "--";
+            }
+        }
+
+        // Sliders & Weight Events
+        DOM.sliderRock.addEventListener('input', (e) => {
+            weightRock = parseFloat(e.target.value);
+            DOM.valRock.textContent = `${weightRock.toFixed(1)}×`;
+            runAStarInstant();
+        });
+
+        DOM.sliderSand.addEventListener('input', (e) => {
+            weightSand = parseFloat(e.target.value);
+            DOM.valSand.textContent = `${weightSand.toFixed(1)}×`;
+            runAStarInstant();
+        });
+
+        DOM.sliderNear.addEventListener('input', (e) => {
+            weightNear = parseFloat(e.target.value);
+            DOM.valNear.textContent = `${weightNear.toFixed(1)}×`;
+            updateCellVisuals();
+            runAStarInstant();
+        });
+
+        DOM.btnResetWeights.addEventListener('click', () => {
+            weightRock = 4.0;
+            weightSand = 2.5;
+            weightNear = 5.0;
+            DOM.sliderRock.value = 4.0;
+            DOM.sliderSand.value = 2.5;
+            DOM.sliderNear.value = 5.0;
+            DOM.valRock.textContent = '4.0×';
+            DOM.valSand.textContent = '2.5×';
+            DOM.valNear.textContent = '5.0×';
+            updateCellVisuals();
+            runAStarInstant();
+        });
+
+        // Brush Selection
+        Object.keys(DOM.brushBtns).forEach(k => {
+            DOM.brushBtns[k].addEventListener('click', () => {
+                Object.values(DOM.brushBtns).forEach(b => b.classList.remove('active'));
+                DOM.brushBtns[k].classList.add('active');
+                currentBrush = k;
+                audio.blip();
+            });
+        });
+
+        // Preset Switching
+        DOM.presetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                DOM.presetBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                applyPreset(btn.dataset.preset);
+                audio.blip();
+            });
+        });
+
+        // Action Buttons
+        DOM.btnPlay.addEventListener('click', () => {
+            audio.init();
+            runAStarAnimated();
+        });
+
+        DOM.btnWalk.addEventListener('click', () => {
+            audio.init();
+            walkCharacterAlongPath();
+        });
+
+        DOM.btnStep.addEventListener('click', () => {
+            runAStarInstant();
+        });
+
+        DOM.btnClear.addEventListener('click', () => {
+            document.querySelectorAll('.map-cell').forEach(c => {
+                c.classList.remove('cell-open', 'cell-closed', 'cell-path');
+            });
+            DOM.statsLabel.textContent = "Path cleared. Click RUN A* or change a slider.";
+        });
+
+        DOM.btnSound.addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            DOM.btnSound.textContent = audio.muted ? '🔇 MUTED' : '🔊 SOUND';
+        });
+
+        DOM.btnCrt.addEventListener('click', () => {
+            document.body.classList.toggle('no-crt');
+        });
+
+        // Keyboard Space to run
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                DOM.btnPlay.click();
+            }
+        });
+
+        // Boot
+        initGrid();
+        buildGridDOM();
+        applyPreset('mountain');
+    </script>
+</body>
+</html>
